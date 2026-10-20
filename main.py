@@ -2,7 +2,6 @@ import os
 import time
 import requests
 
-# Exemplo simples de estrutura do robô de promoções
 def buscar_ofertas():
     print("Buscando ofertas do dia...")
     ofertas = [
@@ -20,4 +19,7 @@ def rodar():
         print("-" * 30)
 
 if __name__ == "__main__":
-    rodar()
+    while True:
+        rodar()
+        print("Aguardando 10 minutos para a próxima verificação...")
+        time.sleep(600)  # Aguarda 600 segundos (10 minutos)
