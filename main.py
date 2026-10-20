@@ -36,11 +36,6 @@ def run_web_server():
     server.serve_forever()
 
 def buscar_ofertas_shopee():
-    """
-    Simula a varredura automática das principais campanhas, achadinhos 
-    e ofertas relâmpago mais populares da Shopee.
-    """
-    # Aqui o robô gera dinamicamente os links de campanhas e achadinhos da Shopee
     ofertas_automaticas = [
         {
             "titulo": "Achadinhos da Shopee: Ofertas Relâmpago do Dia",
@@ -66,7 +61,7 @@ def rodar_robo():
         
         for item in produtos:
             mensagem = (
-                f"🔥 *ACHADINHO AUTOMÁTICO — SHOPEE*\n\n"
+                "🔥 *ACHADINHO AUTOMÁTICO — SHOPEE*\n\n"
                 f"📦 *Produto:* {item['titulo']}\n"
                 f"📂 *Categoria:* _{item['categoria']}_\n"
                 f"💰 *Condição:* {item['desconto']}\n\n"
