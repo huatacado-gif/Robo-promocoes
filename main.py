@@ -66,17 +66,17 @@ def rodar_robo():
         
         for item in produtos:
             mensagem = (
-                f"🔥 *ACHADINHO AUTOMÁTICO — SHOPEE* 🔥\n\n"
-                f"📦 *{item['titulo']}*\n"
-                f"📂 Categoria: _{item['categoria']}_\n"
-                f"💰 Condição: *{item['desconto']}*\n\n"
+                f"🔥 *ACHADINHO AUTOMÁTICO — SHOPEE*\n\n"
+                f"📦 *Produto:* {item['titulo']}\n"
+                f"📂 *Categoria:* _{item['categoria']}_\n"
+                f"💰 *Condição:* {item['desconto']}\n\n"
                 f"👉 [Clique aqui para ver as ofertas]({item['link']})"
             )
             enviar_telegram(mensagem)
-            time.sleep(3)  # Pausa de segurança entre os disparos
+            time.sleep(3)
             
         print("Aguardando 1 hora para a próxima varredura...")
-        time.sleep(3600)  # Repete a cada 1 hora
+        time.sleep(3600)
 
 if __name__ == "__main__":
     threading.Thread(target=run_web_server, daemon=True).start()
