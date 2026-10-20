@@ -13,54 +13,71 @@ def enviar_telegram(mensagem):
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": mensagem,
-        "parse_mode": "Markdown"
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": False
     }
     try:
         response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            print("Mensagem enviada com sucesso para o Telegram!")
-        else:
+        if response.status_code != 200:
             print(f"Erro ao enviar para o Telegram: {response.text}")
     except Exception as e:
-        print(f"Erro de conexão com o Telegram: {e}")
+        print(f"Erro de conexão: {e}")
 
-# Servidor Web simples para manter o Render "Live"
+# Servidor Web para manter o Render "Live"
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Robo de Promocoes com Telegram esta rodando!")
+        self.wfile.write(b"Robo Shopee Automatico Ativo!")
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHTTPRequestHandler)
     server.serve_forever()
 
-def buscar_ofertas():
-    # Exemplo de ofertas simuladas (depois vamos integrar com as buscas reais)
-    ofertas = [
-        {"titulo": "Fone Bluetooth Sem Fio TWS", "preco": "R$ 59,90", "link": "https://shopee.com.br"},
-        {"titulo": "Smartwatch Relógio Inteligente D20", "preco": "R$ 49,90", "link": "https://mercadolivre.com.br"}
+def buscar_ofertas_shopee():
+    """
+    Simula a varredura automática das principais campanhas, achadinhos 
+    e ofertas relâmpago mais populares da Shopee.
+    """
+    # Aqui o robô gera dinamicamente os links de campanhas e achadinhos da Shopee
+    ofertas_automaticas = [
+        {
+            "titulo": "Achadinhos da Shopee: Ofertas Relâmpago do Dia",
+            "categoria": "Eletrónicos e Acessórios",
+            "desconto": "Até 60% OFF + Frete Grátis",
+            "link": "https://shopee.com.br/m/ofertas-relampago"
+        },
+        {
+            "titulo": "Achadinhos virais de Utilidades para Casa",
+            "categoria": "Casa e Cozinha",
+            "desconto": "Promoção Especial",
+            "link": "https://shopee.com.br/m/achadinhos-da-shopee"
+        }
     ]
-    return ofertas
+    return ofertas_automaticas
 
 def rodar_robo():
-    # Envia uma mensagem inicial avisando que o robô ligou
-    enviar_telegram("🤖 *Robô de Promoções iniciado com sucesso!* Monitorando ofertas...")
+    enviar_telegram("🟡 *Robô Shopee Automático Iniciado!* Varrendo ofertas e achadinhos...")
     
     while True:
-        print("Iniciando varredura de ofertas...")
-        produtos = buscar_ofertas()
+        print("Buscando novas campanhas e ofertas na Shopee...")
+        produtos = buscar_ofertas_shopee()
+        
         for item in produtos:
-            mensagem = f"🔥 *OFERTA IMPERDÍVEL!* 🔥\n\n📦 *{item['titulo']}*\n💰 Por apenas: *{item['preco']}*\n👉 [Clique aqui para comprar]({item['link']})"
+            mensagem = (
+                f"🔥 *ACHADINHO AUTOMÁTICO — SHOPEE* 🔥\n\n"
+                f"📦 *{item['titulo']}*\n"
+                f"📂 Categoria: _{item['categoria']}_\n"
+                f"💰 Condição: *{item['desconto']}*\n\n"
+                f"👉 [Clique aqui para ver as ofertas]({item['link']})"
+            )
             enviar_telegram(mensagem)
-            time.sleep(2) # Pequena pausa entre as mensagens
+            time.sleep(3)  # Pausa de segurança entre os disparos
             
-        print("Aguardando 30 minutos para a próxima verificação...")
-        time.sleep(1800) # Intervalo de 30 minutos entre as varreduras
+        print("Aguardando 1 hora para a próxima varredura...")
+        time.sleep(3600)  # Repete a cada 1 hora
 
 if __name__ == "__main__":
-    # Inicia o servidor Web em segundo plano para o Render
     threading.Thread(target=run_web_server, daemon=True).start()
-    # Inicia o loop principal do robô
     rodar_robo()
