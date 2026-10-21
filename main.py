@@ -1,95 +1,96 @@
-
 import os
 import time
 import threading
 import requests
+import random
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Configurações do Telegram
-TELEGRAM_TOKEN = "8785541549:AAHjKxGNC6kSBJ5VZRCcxlOSuHe6uwAGOrU"
+TELEGRAM_TOKEN = "8785541549:AAGOatZvWW3yLcnmgQmYJEaBtQmv4wOmqHQ"
 TELEGRAM_CHAT_ID = "723715057"
 
-# O seu link principal de afiliado da Shopee
-LINK_AFILIADO_SHOPEE = "https://shopee.com.br/m/ofertas-relampago"
-
-def enviar_telegram(mensagem):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+def enviar_telegram_com_foto(foto_url, mensagem):
+    """Envia uma foto com legenda formatada para o Telegram"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": mensagem,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": False
+        "photo": foto_url,
+        "caption": mensagem,
+        "parse_mode": "Markdown"
     }
     try:
-        requests.post(url, json=payload)
+        response = requests.post(url, json=payload)
+        if response.status_code != 200:
+            print(f"Erro ao enviar foto para o Telegram: {response.text}")
     except Exception as e:
-        print(f"Erro ao enviar: {e}")
+        print(f"Erro de conexão: {e}")
 
+# Servidor Web para manter o Render "Live"
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Robo Pro Mode Ativo!")
+        self.wfile.write(b"Robo Mercado Livre Pro Ativo!")
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHTTPRequestHandler)
     server.serve_forever()
 
-def obter_catalogo_pro():
+def carregar_catalogo_achadinhos():
     """
-    Catálogo dinâmico simulando achadinhos virais e categorias de alta conversão,
-    direcionados automaticamente para o seu link de afiliado.
+    CATÁLOGO DE PRODUTOS DO MERCADO LIVRE:
+    Seus links de afiliado já estão integrados nos produtos abaixo.
     """
     return [
         {
-            "titulo": "🔥 Fone de Ouvido Bluetooth TWS de Alta Qualidade",
-            "categoria": "Eletrónicos e Tecnologia",
-            "preco_antigo": "R$ 89,90",
-            "preco_novo": "R$ 34,90",
-            "desconto": "61% OFF",
-            "link": LINK_AFILIADO_SHOPEE
+            "titulo": "Achadinho em Destaque — Mercado Livre",
+            "categoria": "Ofertas e Achados",
+            "desconto": "Frete Grátis + Condição Especial",
+            # Nota: Lembre-se de colocar o link direto da imagem oficial do produto no campo abaixo
+            "foto": "https://http2.mlstatic.com/D_NQ_NP_2X_752405-MLB70138942296_062023-F.webp", 
+            "link": "https://meli.la/1azkTqG"
         },
         {
-            "titulo": "🏡 Mini Processador de Alimentos USB Recarregável",
-            "categoria": "Casa e Cozinha",
-            "preco_antigo": "R$ 59,90",
-            "preco_novo": "R$ 22,90",
-            "desconto": "61% OFF",
-            "link": LINK_AFILIADO_SHOPEE
-        },
-        {
-            "titulo": "⚡ Carregador Portátil Power Bank Slim 10000mAh",
-            "categoria": "Acessórios para Telemóvel",
-            "preco_antigo": "R$ 119,90",
-            "preco_novo": "R$ 49,90",
-            "desconto": "58% OFF",
-            "link": LINK_AFILIADO_SHOPEE
+            "titulo": "Super Oferta do Dia — Mercado Livre",
+            "categoria": "Tendências e Utilidades",
+            "desconto": "Melhor preço da semana",
+            # Nota: Lembre-se de colocar o link direto da imagem oficial do produto no campo abaixo
+            "foto": "https://http2.mlstatic.com/D_NQ_NP_2X_985552-MLB72983758242_112023-F.webp", 
+            "link": "https://meli.la/2K1GV2W"
         }
     ]
 
 def rodar_robo():
-    enviar_telegram("⭐ *Robô Pro (Modo Achadinhos) Iniciado com Sucesso!*")
+    enviar_telegram_com_foto(
+        "https://http2.mlstatic.com/D_NQ_NP_2X_752405-MLB70138942296_062023-F.webp", 
+        "🤖 *Robô Pro Mercado Livre Iniciado!* Postagens fracionadas ativadas."
+    )
+    
+    catalogo = carregar_catalogo_achadinhos()
     
     while True:
-        print("Executando varredura do catálogo Pro...")
-        produtos = obter_catalogo_pro()
+        random.shuffle(catalogo)
+        print("Iniciando ciclo de postagens fracionadas...")
         
-        for item in produtos:
+        for item in catalogo:
             mensagem = (
-                f"🚨 *ACHADINHO EM DESTAQUE* 🚨\n\n"
-                f"📦 *{item['titulo']}*\n"
-                f"📂 Categoria: _{item['categoria']}_\n\n"
-                f"❌ De: ~{item['preco_antigo']}~\n"
-                f"✅ Por apenas: *{item['preco_novo']}* ({item['desconto']})\n\n"
-                f"🛒 *Garanta o seu com desconto:* [Clique Aqui para Comprar]({item['link']})\n\n"
-                f"⚡ *Corre que o estoque é limitado!*"
+                f"🔥 *ACHADINHO EM DESTAQUE* 🔥\n\n"
+                f"📦 *Produto:* {item['titulo']}\n"
+                f"📂 *Categoria:* _{item['categoria']}_\n"
+                f"💰 *Condição:* {item['desconto']}\n\n"
+                f"👉 [Clique aqui para garantir o seu]({item['link']})\n\n"
+                f"⚡ _Corre que o estoque é limitado!_"
             )
-            enviar_telegram(mensagem)
-            time.sleep(4)  # Intervalo de segurança entre envios
             
-        print("Ciclo concluído. Aguardando 1 hora para a próxima rodada...")
-        time.sleep(3600)
+            enviar_telegram_com_foto(item['foto'], mensagem)
+            print(f"Produto enviado com sucesso: {item['titulo']}")
+            
+            # Pausa de 4 horas entre cada postagem (cerca de 5 vezes por dia)
+            tempo_de_espera = 14400  
+            time.sleep(tempo_de_espera)
+            
+        print("Ciclo completo. Reiniciando a rotação dos produtos...")
 
 if __name__ == "__main__":
     threading.Thread(target=run_web_server, daemon=True).start()
