@@ -39,31 +39,30 @@ def run_web_server():
 
 def carregar_catalogo_achadinhos():
     """
-    CATÁLOGO DE PRODUTOS DO MERCADO LIVRE:
-    Seus links de afiliado já estão integrados nos produtos abaixo.
+    CATÁLOGO DE PRODUTOS COM TÍTULOS PRONTOS:
+    Organizado com os seus links de afiliado, fotos e títulos comerciais.
     """
     return [
         {
-            "titulo": "Achadinho em Destaque — Mercado Livre",
-            "categoria": "Ofertas e Achados",
+            "titulo": "Achadinho Exclusivo — Mercado Livre",
+            "categoria": "Ofertas e Utilidades",
             "desconto": "Frete Grátis + Condição Especial",
-            # Nota: Lembre-se de colocar o link direto da imagem oficial do produto no campo abaixo
-            "foto": "https://http2.mlstatic.com/D_NQ_NP_2X_752405-MLB70138942296_062023-F.webp", 
-            "link": "https://meli.la/1azkTqG"
+            "foto": "https://http2.mlstatic.com/D_NQ_NP_723177-MLA99366040854_112025-O.webp", 
+            "link": "https://meli.la/1qSMXTH"
         },
         {
-            "titulo": "Super Oferta do Dia — Mercado Livre",
-            "categoria": "Tendências e Utilidades",
+            "titulo": "Super Achadinho do Dia — Mercado Livre",
+            "categoria": "Tendências e Destaques",
             "desconto": "Melhor preço da semana",
-            # Nota: Lembre-se de colocar o link direto da imagem oficial do produto no campo abaixo
-            "foto": "https://http2.mlstatic.com/D_NQ_NP_2X_985552-MLB72983758242_112023-F.webp", 
-            "link": "https://meli.la/2K1GV2W"
+            "foto": "https://http2.mlstatic.com/D_Q_NP_970780-MLA113098483707_062026-F.webp", 
+            "link": "https://meli.la/32wcHqJ"
         }
     ]
 
 def rodar_robo():
+    # Mensagem de arranque do robô
     enviar_telegram_com_foto(
-        "https://http2.mlstatic.com/D_NQ_NP_2X_752405-MLB70138942296_062023-F.webp", 
+        "https://http2.mlstatic.com/D_NQ_NP_723177-MLA99366040854_112025-O.webp", 
         "🤖 *Robô Pro Mercado Livre Iniciado!* Postagens fracionadas ativadas."
     )
     
