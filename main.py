@@ -8,6 +8,12 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 TELEGRAM_TOKEN = "8785541549:AAHjKxGNC6kSBJ5VZRCcxlOSuHe6uwAGOrU"
 TELEGRAM_CHAT_ID = "723715057"
 
+# ==============================================================================
+# O SEU LINK DE AFILIADO PRINCIPAL DA SHOPEE
+# (https://collshp.com/acadinhoseofertass?view=storefront)
+# ==============================================================================
+LINK_AFILIADO_SHOPEE = "https://shopee.com.br/m/ofertas-relampago"
+
 def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
@@ -28,50 +34,59 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Robo Shopee Automatico Ativo!")
+        self.wfile.write(b"Robo Shopee Liquidation Ativo!")
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHTTPRequestHandler)
     server.serve_forever()
 
-def buscar_ofertas_shopee():
-    ofertas_automaticas = [
+def obter_campanhas_liquidacao():
+    """
+    Retorna campanhas automáticas de liquidação e achadinhos da Shopee
+    integradas com o seu link de afiliado.
+    """
+    campanhas = [
         {
-            "titulo": "Achadinhos da Shopee: Ofertas Relâmpago do Dia",
-            "categoria": "Eletrónicos e Acessórios",
-            "desconto": "Até 60% OFF + Frete Grátis",
-            "link": "https://shopee.com.br/m/ofertas-relampago"
+            "titulo": "⚡ Ofertas Relâmpago do Dia (Até 60% OFF)",
+            "categoria": "Eletrónicos, Casa e Utilidades",
+            "detalhe": "Produtos selecionados com super descontos por tempo limitado.",
+            "link": LINK_AFILIADO_SHOPEE
         },
         {
-            "titulo": "Achadinhos virais de Utilidades para Casa",
-            "categoria": "Casa e Cozinha",
-            "desconto": "Promoção Especial",
-            "link": "https://shopee.com.br/m/achadinhos-da-shopee"
+            "titulo": "📦 Achadinhos Virais e Frete Grátis",
+            "categoria": "Achadinhos da Internet",
+            "detalhe": "Os itens mais desejados e vendidos da semana na Shopee.",
+            "link": LINK_AFILIADO_SHOPEE
+        },
+        {
+            "titulo": "🔥 Liquidação de Eletrónicos e Acessórios",
+            "categoria": "Tecnologia e Gadgets",
+            "detalhe": "Fones, carregadores, suportes e muito mais em promoção.",
+            "link": LINK_AFILIADO_SHOPEE
         }
     ]
-    return ofertas_automaticas
+    return campanhas
 
 def rodar_robo():
-    enviar_telegram("🟡 *Robô Shopee Automático Iniciado!* Varrendo ofertas e achadinhos...")
+    enviar_telegram("🟡 *Robô de Liquidação Automática Shopee Ativo!* Monitorizando ofertas...")
     
     while True:
-        print("Buscando novas campanhas e ofertas na Shopee...")
-        produtos = buscar_ofertas_shopee()
+        print("Buscando campanhas de liquidação na Shopee...")
+        ofertas = obter_campanhas_liquidacao()
         
-        for item in produtos:
+        for item in ofertas:
             mensagem = (
-                "🔥 *ACHADINHO AUTOMÁTICO — SHOPEE*\n\n"
-                f"📦 *Produto:* {item['titulo']}\n"
+                f"🔥 *{item['titulo']}* 🔥\n\n"
                 f"📂 *Categoria:* _{item['categoria']}_\n"
-                f"💰 *Condição:* {item['desconto']}\n\n"
-                f"👉 [Clique aqui para ver as ofertas]({item['link']})"
+                f"📝 *Detalhe:* {item['detalhe']}\n\n"
+                f"👉 [Aproveitar Descontos Agora]({item['link']})"
             )
             enviar_telegram(mensagem)
-            time.sleep(3)
+            time.sleep(5)  # Intervalo de 5 segundos entre o envio de cada campanha
             
-        print("Aguardando 1 hora para a próxima varredura...")
-        time.sleep(3600)
+        print("Aguardando 1 hora para o próximo ciclo de campanhas...")
+        time.sleep(3600)  # Repete o ciclo de campanhas a cada 1 hora
 
 if __name__ == "__main__":
     threading.Thread(target=run_web_server, daemon=True).start()
