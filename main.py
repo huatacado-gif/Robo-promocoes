@@ -1,3 +1,4 @@
+
 import os
 import time
 import threading
@@ -8,10 +9,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 TELEGRAM_TOKEN = "8785541549:AAHjKxGNC6kSBJ5VZRCcxlOSuHe6uwAGOrU"
 TELEGRAM_CHAT_ID = "723715057"
 
-# ==============================================================================
-# O SEU LINK DE AFILIADO PRINCIPAL DA SHOPEE
-# (https://collshp.com/acadinhoseofertass?view=storefront)
-# ==============================================================================
+# O seu link principal de afiliado da Shopee
 LINK_AFILIADO_SHOPEE = "https://shopee.com.br/m/ofertas-relampago"
 
 def enviar_telegram(mensagem):
@@ -23,70 +21,75 @@ def enviar_telegram(mensagem):
         "disable_web_page_preview": False
     }
     try:
-        response = requests.post(url, json=payload)
-        if response.status_code != 200:
-            print(f"Erro ao enviar para o Telegram: {response.text}")
+        requests.post(url, json=payload)
     except Exception as e:
-        print(f"Erro de conexão: {e}")
+        print(f"Erro ao enviar: {e}")
 
-# Servidor Web para manter o Render "Live"
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Robo Shopee Liquidation Ativo!")
+        self.wfile.write(b"Robo Pro Mode Ativo!")
 
 def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHTTPRequestHandler)
     server.serve_forever()
 
-def obter_campanhas_liquidacao():
+def obter_catalogo_pro():
     """
-    Retorna campanhas automáticas de liquidação e achadinhos da Shopee
-    integradas com o seu link de afiliado.
+    Catálogo dinâmico simulando achadinhos virais e categorias de alta conversão,
+    direcionados automaticamente para o seu link de afiliado.
     """
-    campanhas = [
+    return [
         {
-            "titulo": "⚡ Ofertas Relâmpago do Dia (Até 60% OFF)",
-            "categoria": "Eletrónicos, Casa e Utilidades",
-            "detalhe": "Produtos selecionados com super descontos por tempo limitado.",
+            "titulo": "🔥 Fone de Ouvido Bluetooth TWS de Alta Qualidade",
+            "categoria": "Eletrónicos e Tecnologia",
+            "preco_antigo": "R$ 89,90",
+            "preco_novo": "R$ 34,90",
+            "desconto": "61% OFF",
             "link": LINK_AFILIADO_SHOPEE
         },
         {
-            "titulo": "📦 Achadinhos Virais e Frete Grátis",
-            "categoria": "Achadinhos da Internet",
-            "detalhe": "Os itens mais desejados e vendidos da semana na Shopee.",
+            "titulo": "🏡 Mini Processador de Alimentos USB Recarregável",
+            "categoria": "Casa e Cozinha",
+            "preco_antigo": "R$ 59,90",
+            "preco_novo": "R$ 22,90",
+            "desconto": "61% OFF",
             "link": LINK_AFILIADO_SHOPEE
         },
         {
-            "titulo": "🔥 Liquidação de Eletrónicos e Acessórios",
-            "categoria": "Tecnologia e Gadgets",
-            "detalhe": "Fones, carregadores, suportes e muito mais em promoção.",
+            "titulo": "⚡ Carregador Portátil Power Bank Slim 10000mAh",
+            "categoria": "Acessórios para Telemóvel",
+            "preco_antigo": "R$ 119,90",
+            "preco_novo": "R$ 49,90",
+            "desconto": "58% OFF",
             "link": LINK_AFILIADO_SHOPEE
         }
     ]
-    return campanhas
 
 def rodar_robo():
-    enviar_telegram("🟡 *Robô de Liquidação Automática Shopee Ativo!* Monitorizando ofertas...")
+    enviar_telegram("⭐ *Robô Pro (Modo Achadinhos) Iniciado com Sucesso!*")
     
     while True:
-        print("Buscando campanhas de liquidação na Shopee...")
-        ofertas = obter_campanhas_liquidacao()
+        print("Executando varredura do catálogo Pro...")
+        produtos = obter_catalogo_pro()
         
-        for item in ofertas:
+        for item in produtos:
             mensagem = (
-                f"🔥 *{item['titulo']}* 🔥\n\n"
-                f"📂 *Categoria:* _{item['categoria']}_\n"
-                f"📝 *Detalhe:* {item['detalhe']}\n\n"
-                f"👉 [Aproveitar Descontos Agora]({item['link']})"
+                f"🚨 *ACHADINHO EM DESTAQUE* 🚨\n\n"
+                f"📦 *{item['titulo']}*\n"
+                f"📂 Categoria: _{item['categoria']}_\n\n"
+                f"❌ De: ~{item['preco_antigo']}~\n"
+                f"✅ Por apenas: *{item['preco_novo']}* ({item['desconto']})\n\n"
+                f"🛒 *Garanta o seu com desconto:* [Clique Aqui para Comprar]({item['link']})\n\n"
+                f"⚡ *Corre que o estoque é limitado!*"
             )
             enviar_telegram(mensagem)
-            time.sleep(5)  # Intervalo de 5 segundos entre o envio de cada campanha
+            time.sleep(4)  # Intervalo de segurança entre envios
             
-        print("Aguardando 1 hora para o próximo ciclo de campanhas...")
-        time.sleep(3600)  # Repete o ciclo de campanhas a cada 1 hora
+        print("Ciclo concluído. Aguardando 1 hora para a próxima rodada...")
+        time.sleep(3600)
 
 if __name__ == "__main__":
     threading.Thread(target=run_web_server, daemon=True).start()
