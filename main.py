@@ -39,8 +39,8 @@ def run_web_server():
 
 def carregar_catalogo_achadinhos():
     """
-    CATÁLOGO DE PRODUTOS COM TÍTULOS PRONTOS:
-    Organizado com os seus links de afiliado, fotos e títulos comerciais.
+    CATÁLOGO DE PRODUTOS DO MERCADO LIVRE:
+    Atualizado com valores, títulos comerciais, fotos e links de afiliado.
     """
     return [
         {
@@ -56,13 +56,20 @@ def carregar_catalogo_achadinhos():
             "desconto": "Melhor preço da semana",
             "foto": "https://http2.mlstatic.com/D_Q_NP_970780-MLA113098483707_062026-F.webp", 
             "link": "https://meli.la/32wcHqJ"
+        },
+        {
+            "titulo": "Quadro Robo Termoplástico C/ 6 Tomadas - Standard - Ravesi",
+            "categoria": "Ferramentas e Instalações",
+            "desconto": "Apenas R$ 282,90 + Oferta Especial",
+            "foto": "https://http2.mlstatic.com/D_Q_NP_772752-MLB114529867748_082026-F-quadro-robo-termoplastico-c-6-tomadas--standard--ravesi.webp", 
+            "link": "https://meli.la/2HEQCaD"
         }
     ]
 
 def rodar_robo():
     # Mensagem de arranque do robô
     enviar_telegram_com_foto(
-        "https://http2.mlstatic.com/D_NQ_NP_723177-MLA99366040854_112025-O.webp", 
+        "https://http2.mlstatic.com/D_Q_NP_772752-MLB114529867748_082026-F-quadro-robo-termoplastico-c-6-tomadas--standard--ravesi.webp", 
         "🤖 *Robô Pro Mercado Livre Iniciado!* Postagens fracionadas ativadas."
     )
     
