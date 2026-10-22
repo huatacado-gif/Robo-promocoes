@@ -39,30 +39,30 @@ def run_web_server():
 
 def carregar_catalogo_achadinhos():
     """
-    SEU CATÁLOGO DE PRODUTOS:
+    SEU CATÁLOGO DE PRODUTOS ATUALIZADO:
     Apenas 1 foto e 1 legenda com link para cada item.
     """
     return [
         {
-            "titulo": "Luminária de Mesa / Achadinho",
-            "categoria": "Casa e Decoração",
-            "desconto": "Frete Grátis + Oferta Especial",
-            "foto": "https://http2.mlstatic.com/D_NQ_NP_723177-MLA99366040854_112025-O.webp", 
-            "link": "https://meli.la/1qSMXTH"
+            "titulo": "Tênis Kappa Park 2.0 Original Unissex Caminhada Academia",
+            "categoria": "Calçados e Esporte (Mais Vendido)",
+            "desconto": "Por Apenas R$ 82,09 (51% OFF no Pix)",
+            "foto": "https://http2.mlstatic.com/D_Q_NP_636204-MLB92283366432_092025-F-tnis-kappa-park-20-original-unissex-caminhada-academia.webp", 
+            "link": "https://meli.la/2U4WWL5"
         },
         {
-            "titulo": "Varal de Chão Multiuso Dobrável",
-            "categoria": "Utilidades Domésticas",
-            "desconto": "Melhor preço da semana",
-            "foto": "https://http2.mlstatic.com/D_Q_NP_970780-MLA113098483707_062026-F.webp", 
-            "link": "https://meli.la/32wcHqJ"
+            "titulo": "Tênis Casual Kappa Zenit Masculino Unissex Conforto",
+            "categoria": "Calçados e Moda",
+            "desconto": "Por Apenas R$ 94,03 (59% OFF)",
+            "foto": "https://http2.mlstatic.com/D_Q_NP_627065-MLB109020200579_032026-F-tnis-casual-kappa-zenit-masculino-unissex-conforto.webp", 
+            "link": "https://meli.la/2osxUq1"
         },
         {
-            "titulo": "Quadro Robo Termoplástico C/ 6 Tomadas Ravesi",
-            "categoria": "Ferramentas e Elétrica",
-            "desconto": "Apenas R$ 282,90",
-            "foto": "https://http2.mlstatic.com/D_Q_NP_772752-MLB114529867748_082026-F-quadro-robo-termoplastico-c-6-tomadas--standard--ravesi.webp", 
-            "link": "https://meli.la/2HEQCaD"
+            "titulo": "Kit Colcha Queen 3 Peças Cobre Leito Estampado Dupla Face",
+            "categoria": "Casa e Cama",
+            "desconto": "Por Apenas R$ 99,90 (44% OFF)",
+            "foto": "https://http2.mlstatic.com/D_Q_NP_609554-MLB119925695139_102026-F-kit-colcha-queen-3-pecas-cobre-leito-estampado-dupla-face.webp", 
+            "link": "https://meli.la/1w6ieqg"
         }
     ]
 
