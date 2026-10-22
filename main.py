@@ -7,7 +7,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # Configurações do Telegram
 TELEGRAM_TOKEN = "8785541549:AAGOatZvWW3yLcnmgQmYJEaBtQmv4wOmqHQ"
-TELEGRAM_CHAT_ID = "723715057"
+TELEGRAM_CHAT_ID = "@H7promorelampago"
 
 def enviar_telegram_com_foto(foto_url, mensagem):
     """Envia UMA ÚNICA mensagem contendo a foto e a legenda com o link"""
