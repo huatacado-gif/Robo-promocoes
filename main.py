@@ -25,10 +25,10 @@ CANAIS = {
     "eletronicos": os.getenv("CHANNEL_ELETRONICOS", "").strip(),
 }
 
-MAX_POSTS_DIA = int(os.getenv("MAX_POSTS_DAY", "18"))
-MAX_POR_CATEGORIA = 6
+MAX_POSTS_DIA = int(os.getenv("MAX_POSTS_DAY", "50"))
+MAX_POR_CATEGORIA = 2
 
-INTERVALO_BUSCA = 4 * 60 * 60  # 4 horas
+INTERVALO_BUSCA = 4 * 60   # 4 minutos
 FUSO = ZoneInfo("America/Sao_Paulo")
 
 ARQUIVO_ESTADO = Path("estado_robo.json")
