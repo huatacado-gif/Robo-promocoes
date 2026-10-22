@@ -26,7 +26,7 @@ CANAIS = {
 }
 
 MAX_POSTS_DIA = int(os.getenv("MAX_POSTS_DAY", "18"))
-MAX_POR_CATEGORIA = 6  # Ajustado para suportar a meta de 18 posts divididos pelos 3 canais
+MAX_POR_CATEGORIA = 6
 
 INTERVALO_BUSCA = 4 * 60 * 60  # 4 horas
 FUSO = ZoneInfo("America/Sao_Paulo")
@@ -299,7 +299,6 @@ def enviar_telegram(produto, categoria):
         f"🛒 Confira aqui:\n{link}\n\n"
         f"ℹ️ Preço e disponibilidade podem mudar. "
         f"Consulte o valor atual no anúncio.\n\n"
-        f"🔗 Link de afiliado."
     )
 
     base_url = (
@@ -348,7 +347,7 @@ def enviar_telegram(produto, categoria):
 
 
 # ==================================================
-# CICLO PRINCIPAL
+# CICLO PRINCIPAL (CORRIGIDO CONTRA DUPLICATAS)
 # ==================================================
 
 def executar_ciclo():
@@ -381,8 +380,12 @@ def executar_ciclo():
         categoria = produto["_categoria"]
         chave = produto["_chave"]
 
+        # Impede que o mesmo produto seja processado novamente
         if chave in vistos:
             continue
+
+        # Marca como visto imediatamente na memória do ciclo
+        vistos.add(chave)
 
         if contagem_categoria.get(categoria, 0) >= MAX_POR_CATEGORIA:
             continue
@@ -400,7 +403,6 @@ def executar_ciclo():
                 "desconto_anunciado": produto["_desconto_numero"],
             })
 
-            vistos.add(chave)
             estado["vistos"] = list(vistos)[-5000:]
 
             contagem_categoria[categoria] = (
@@ -459,4 +461,3 @@ if __name__ == "__main__":
     ).start()
 
     iniciar_robo()
-
