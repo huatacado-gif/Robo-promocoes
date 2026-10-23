@@ -25,10 +25,12 @@ CANAIS = {
     "eletronicos": os.getenv("CHANNEL_ELETRONICOS", "").strip(),
 }
 
-MAX_POSTS_DIA = int(os.getenv("MAX_POSTS_DAY", "50"))
+MAX_POSTS_DIA = int(os.getenv("MAX_POSTS_DAY", "18"))
 MAX_POR_CATEGORIA = 2
 
-INTERVALO_BUSCA = 4 * 60   # 4 minutos
+# Horários locais de Brasília (America/Sao_Paulo)
+HORARIOS_PUBLICACAO = [(6, 30), (11, 0), (19, 0)]
+INTERVALO_VERIFICACAO = 20  # verifica a agenda a cada 20 segundos
 FUSO = ZoneInfo("America/Sao_Paulo")
 
 ARQUIVO_ESTADO = Path("estado_robo.json")
@@ -49,7 +51,6 @@ CATEGORIAS = {
         "desconto_minimo": 30,
         "termos": [
             "organizador de cozinha",
-            "air fryer",
             "utensilios domesticos",
             "organizadores para casa",
         ],
@@ -65,13 +66,20 @@ CATEGORIAS = {
         ],
     },
     "eletronicos": {
-        "nome": "Eletrônicos",
+        "nome": "Eletrônicos e Eletrodomésticos",
         "desconto_minimo": 20,
         "termos": [
             "fone bluetooth",
             "smartwatch",
             "caixa de som bluetooth",
             "acessorios para celular",
+            "smart tv",
+            "televisao",
+            "ar condicionado",
+            "air fryer",
+            "liquidificador",
+            "ventilador",
+            "aspirador de po",
         ],
     },
 }
@@ -83,7 +91,7 @@ CATEGORIAS = {
 
 def carregar_estado():
     if not ARQUIVO_ESTADO.exists():
-        return {"publicacoes": [], "vistos": []}
+        return {"publicacoes": [], "vistos": [], "execucoes_agendadas": {}}
 
     try:
         with ARQUIVO_ESTADO.open("r", encoding="utf-8") as arquivo:
@@ -91,11 +99,12 @@ def carregar_estado():
 
         estado.setdefault("publicacoes", [])
         estado.setdefault("vistos", [])
+        estado.setdefault("execucoes_agendadas", {})
         return estado
 
     except (OSError, json.JSONDecodeError):
         logging.exception("Não foi possível ler o estado do robô.")
-        return {"publicacoes": [], "vistos": []}
+        return {"publicacoes": [], "vistos": [], "execucoes_agendadas": {}}
 
 
 def salvar_estado(estado):
@@ -350,25 +359,31 @@ def enviar_telegram(produto, categoria):
 # CICLO PRINCIPAL (CORRIGIDO CONTRA DUPLICATAS)
 # ==================================================
 
-def executar_ciclo():
+def executar_ciclo(horario_slot):
+    """Executa um lote de ofertas para um horário específico."""
     estado = carregar_estado()
     publicados = publicacoes_hoje(estado)
+    chave_slot = f"{data_local()}|{horario_slot}"
 
     restantes = MAX_POSTS_DIA - len(publicados)
 
     if restantes <= 0:
         logging.info("Limite diário de publicações atingido.")
+        estado.setdefault("execucoes_agendadas", {})[chave_slot] = "limite_diario"
+        salvar_estado(estado)
         return
 
     candidatos = buscar_candidatos()
-    vistos = set(estado["vistos"])
+    vistos = set(estado.get("vistos", []))
 
-    contagem_categoria = {}
-
+    # O limite de 2 é por categoria e por horário, não pelo dia inteiro.
+    contagem_categoria_slot = {}
     for publicacao in publicados:
+        if publicacao.get("horario_slot") != horario_slot:
+            continue
         categoria = publicacao.get("categoria")
-        contagem_categoria[categoria] = (
-            contagem_categoria.get(categoria, 0) + 1
+        contagem_categoria_slot[categoria] = (
+            contagem_categoria_slot.get(categoria, 0) + 1
         )
 
     total_enviados = 0
@@ -380,14 +395,10 @@ def executar_ciclo():
         categoria = produto["_categoria"]
         chave = produto["_chave"]
 
-        # Impede que o mesmo produto seja processado novamente
         if chave in vistos:
             continue
 
-        # Marca como visto imediatamente na memória do ciclo
-        vistos.add(chave)
-
-        if contagem_categoria.get(categoria, 0) >= MAX_POR_CATEGORIA:
+        if contagem_categoria_slot.get(categoria, 0) >= MAX_POR_CATEGORIA:
             continue
 
         if enviar_telegram(produto, categoria):
@@ -396,6 +407,7 @@ def executar_ciclo():
             estado["publicacoes"].append({
                 "data": data_local(),
                 "data_hora": agora,
+                "horario_slot": horario_slot,
                 "categoria": categoria,
                 "id": chave,
                 "titulo": produto["titulo"],
@@ -403,19 +415,35 @@ def executar_ciclo():
                 "desconto_anunciado": produto["_desconto_numero"],
             })
 
+            # Marcar como visto somente depois da publicação bem-sucedida.
+            vistos.add(chave)
             estado["vistos"] = list(vistos)[-5000:]
 
-            contagem_categoria[categoria] = (
-                contagem_categoria.get(categoria, 0) + 1
+            contagem_categoria_slot[categoria] = (
+                contagem_categoria_slot.get(categoria, 0) + 1
             )
 
             total_enviados += 1
             salvar_estado(estado)
-
             time.sleep(3)
 
+    # Registra o horário mesmo quando não havia ofertas válidas,
+    # evitando novas tentativas/publicações repetidas no mesmo horário.
+    estado.setdefault("execucoes_agendadas", {})[chave_slot] = "concluido"
+
+    # Mantém apenas os registros de agenda mais recentes para o arquivo não crescer.
+    execucoes = estado["execucoes_agendadas"]
+    if len(execucoes) > 60:
+        chaves_recentes = sorted(execucoes.keys())[-60:]
+        estado["execucoes_agendadas"] = {
+            chave: execucoes[chave] for chave in chaves_recentes
+        }
+
+    salvar_estado(estado)
+
     logging.info(
-        "Ciclo finalizado. Publicações realizadas: %s",
+        "Lote %s finalizado. Publicações realizadas: %s",
+        horario_slot,
         total_enviados,
     )
 
@@ -441,17 +469,46 @@ def run_web_server():
 
 
 def iniciar_robo():
+    logging.info(
+        "Robô iniciado. Horários de publicação: 06:30, 11:00 e 19:00 (Brasília)."
+    )
+
     while True:
         try:
-            executar_ciclo()
-        except Exception:
-            logging.exception("Erro inesperado no ciclo.")
+            agora = datetime.now(FUSO)
+            estado = carregar_estado()
+            execucoes = estado.setdefault("execucoes_agendadas", {})
+            hoje = agora.date().isoformat()
 
-        logging.info(
-            "Próxima busca em aproximadamente %s horas.",
-            INTERVALO_BUSCA / 3600,
-        )
-        time.sleep(INTERVALO_BUSCA)
+            horarios_devidos = []
+            for hora, minuto in HORARIOS_PUBLICACAO:
+                horario_slot = f"{hora:02d}:{minuto:02d}"
+                chave_slot = f"{hoje}|{horario_slot}"
+                instante_slot = agora.replace(
+                    hour=hora, minute=minuto, second=0, microsecond=0
+                )
+
+                if agora >= instante_slot and chave_slot not in execucoes:
+                    horarios_devidos.append((instante_slot, horario_slot, chave_slot))
+
+            if horarios_devidos:
+                # Se o serviço ficou desligado por vários horários, executa
+                # apenas o lote mais recente para não publicar vários lotes juntos.
+                horarios_devidos.sort(key=lambda item: item[0])
+                for _, horario_antigo, chave_antiga in horarios_devidos[:-1]:
+                    execucoes[chave_antiga] = "ignorado_atraso"
+
+                if len(horarios_devidos) > 1:
+                    salvar_estado(estado)
+
+                _, horario_slot, _ = horarios_devidos[-1]
+                executar_ciclo(horario_slot)
+            else:
+                time.sleep(INTERVALO_VERIFICACAO)
+
+        except Exception:
+            logging.exception("Erro inesperado no agendador.")
+            time.sleep(INTERVALO_VERIFICACAO)
 
 
 if __name__ == "__main__":
