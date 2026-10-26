@@ -394,7 +394,9 @@ def executar_ciclo(horario_slot):
 
         categoria = produto["_categoria"]
         chave = produto["_chave"]
-
+        
+        logging.info("DIAGNOSTICO | Produto: %s | Chave: %s", produto.get("titulo"), chave)
+        
         if chave in vistos:
             continue
 
