@@ -1,4 +1,4 @@
-import os
+ import os
 import json
 import time
 import logging
@@ -165,8 +165,9 @@ def supabase_headers(prefer=None):
             "SUPABASE_URL ou SUPABASE_SECRET_KEY não configurada no Render."
         )
     headers = {
+        # As chaves novas sb_secret_ devem ser enviadas no cabeçalho apikey.
+        # Não as envie como Bearer: elas não são JWTs.
         "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json",
     }
     if prefer:
