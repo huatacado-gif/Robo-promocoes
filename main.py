@@ -423,6 +423,7 @@ def buscar_candidatos():
 # ==================================================
 
 
+
 def enviar_telegram(produto, categoria):
     canal = CANAIS.get(categoria)
 
@@ -433,10 +434,10 @@ def enviar_telegram(produto, categoria):
         )
         return False
 
-    titulo = produto["titulo"]
+    titulo = str(produto.get("titulo") or "Oferta especial").strip()
     preco = produto["_preco_numero"]
     desconto = produto["_desconto_numero"]
-    link = produto["link_afiliado"]
+    link = str(produto.get("link_afiliado") or "").strip()
     foto = str(produto.get("foto") or "").strip()
 
     def formatar_preco(valor):
@@ -447,30 +448,34 @@ def enviar_telegram(produto, categoria):
             .replace("X", ".")
         )
 
+    # Encurta títulos muito longos sem cortar palavras.
+    limite_titulo = 100
+    if len(titulo) > limite_titulo:
+        titulo_curto = titulo[:limite_titulo].rsplit(" ", 1)[0]
+        titulo = titulo_curto.rstrip(" ,.-") + "..."
+
     preco_formatado = formatar_preco(preco)
 
-    # Calcula o preço original estimado usando o desconto anunciado.
     preco_original = None
     if 0 < desconto < 100 and preco > 0:
         preco_original = preco / (1 - desconto / 100)
 
     if preco_original and preco_original > preco:
         linha_preco = (
-            f"💸 De: {formatar_preco(preco_original)}\n"
-            f"🔥 Por: {preco_formatado}\n"
+            f"💸 <s>De: {formatar_preco(preco_original)}</s>\n"
+            f"🔥 <b>Por: {preco_formatado}</b>\n"
         )
     else:
-        linha_preco = f"💰 Preço: {preco_formatado}\n"
+        linha_preco = f"🔥 <b>Preço: {preco_formatado}</b>\n"
 
     mensagem = (
-        f"🔥 OFERTA ENCONTRADA!\n\n"
-        f"📦 {titulo}\n\n"
+        f"🔥 <b>OFERTA ENCONTRADA!</b>\n\n"
+        f"📦 <b>{titulo}</b>\n\n"
         f"{linha_preco}"
-        f"🏷️ Desconto anunciado: {desconto:.0f}%\n\n"
-        f"🛒 Confira aqui:\n{link}\n\n"
-        f"ℹ️ O preço original é estimado a partir do "
-        f"desconto anunciado. Confira os valores no anúncio.\n"
-        f"Preço e disponibilidade podem mudar.\n"
+        f"🏷️ <b>{desconto:.0f}% OFF</b>\n\n"
+        f"🛒 <a href=\"{link}\">COMPRAR AGORA</a>\n\n"
+        f"<i>Preço original estimado com base no desconto anunciado. "
+        f"Confira o valor atual no anúncio.</i>"
     )
 
     base_url = (
@@ -485,6 +490,7 @@ def enviar_telegram(produto, categoria):
                     "chat_id": canal,
                     "photo": foto,
                     "caption": mensagem,
+                    "parse_mode": "HTML",
                 },
                 timeout=30,
             )
@@ -494,7 +500,8 @@ def enviar_telegram(produto, categoria):
                 data={
                     "chat_id": canal,
                     "text": mensagem,
-                    "disable_web_page_preview": False,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
                 },
                 timeout=30,
             )
@@ -503,7 +510,10 @@ def enviar_telegram(produto, categoria):
         dados = resposta.json()
 
         if not dados.get("ok"):
-            logging.error("Telegram recusou a publicação.")
+            logging.error(
+                "Telegram recusou a publicação: %s",
+                dados.get("description", "erro desconhecido"),
+            )
             return False
 
         logging.info(
@@ -516,6 +526,7 @@ def enviar_telegram(produto, categoria):
     except Exception:
         logging.exception("Falha ao publicar no Telegram.")
         return False
+
 
 
 
