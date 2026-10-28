@@ -393,10 +393,22 @@ def buscar_candidatos():
                     "Erro ao buscar o termo: %s", termo
                 )
 
+    
+    def numero_seguro(valor):
+        try:
+            return float(valor or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
     candidatos.sort(
-        key=lambda p: p["_desconto_numero"],
+        key=lambda p: (
+            numero_seguro(p.get("vendas")),
+            numero_seguro(p.get("avaliacao")),
+            p["_desconto_numero"],
+        ),
         reverse=True,
     )
+
 
     logging.info(
         "Total de candidatos válidos: %s",
