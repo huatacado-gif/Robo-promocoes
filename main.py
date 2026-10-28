@@ -6,11 +6,13 @@ import threading
 import requests
 import unicodedata
 import re
+import secrets
 
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlencode, urlparse, parse_qs
 
 from shopee_api import buscar_ofertas
 
@@ -594,11 +596,149 @@ def executar_ciclo(horario_slot):
 # MONITORAMENTO DO RENDER
 # ==================================================
 
+MELI_CLIENT_ID = os.getenv("MELI_CLIENT_ID", "").strip()
+MELI_CLIENT_SECRET = os.getenv("MELI_CLIENT_SECRET", "").strip()
+
+MELI_REDIRECT_URI = (
+    "https://robo-promocoes-bgo6.onrender.com/"
+    "oauth/mercadolivre/callback"
+)
+
+MELI_AUTH_URL = "https://auth.mercadolivre.com.br/authorization"
+MELI_TOKEN_URL = "https://api.mercadolibre.com/oauth/token"
+
+MELI_STATE_PENDENTE = None
+
+
+def salvar_tokens_mercadolivre(dados):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise RuntimeError("Supabase não configurado.")
+
+    access_token = dados.get("access_token")
+    refresh_token = dados.get("refresh_token")
+
+    if not access_token or not refresh_token:
+        raise RuntimeError("Resposta de tokens incompleta.")
+
+    expiracao = int(dados.get("expires_in", 21600))
+    expires_at = datetime.now(
+        ZoneInfo("UTC")
+    ).timestamp() + expiracao
+
+    payload = {
+        "id": 1,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user_id": dados.get("user_id"),
+        "expires_at": datetime.fromtimestamp(
+            expires_at, ZoneInfo("UTC")
+        ).isoformat(),
+        "atualizado_em": datetime.now(
+            ZoneInfo("UTC")
+        ).isoformat(),
+    }
+
+       resposta = requests.post(
+        f"{SUPABASE_URL}/rest/v1/mercadolivre_tokens",
+        params={"on_conflict": "id"},
+        headers=supabase_headers(
+            "resolution=merge-duplicates,return=minimal"
+        ),
+        json=payload,
+        timeout=SUPABASE_TIMEOUT,
+    )
+    resposta.raise_for_status()
+
+
 class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
+    def responder(self, status, mensagem):
+        corpo = mensagem.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(corpo)))
         self.end_headers()
-        self.wfile.write(b"Robo de ofertas ativo")
+        self.wfile.write(corpo)
+
+    def do_GET(self):
+        global MELI_STATE_PENDENTE
+
+        caminho = urlparse(self.path)
+        parametros = parse_qs(caminho.query)
+
+        if caminho.path == "/":
+            self.responder(200, "Robo de ofertas ativo")
+            return
+
+        if caminho.path == "/oauth/mercadolivre/start":
+            if not MELI_CLIENT_ID or not MELI_CLIENT_SECRET:
+                self.responder(500, "Configure as credenciais do Mercado Livre.")
+                return
+
+            MELI_STATE_PENDENTE = secrets.token_urlsafe(32)
+
+            url = MELI_AUTH_URL + "?" + urlencode({
+                "response_type": "code",
+                "client_id": MELI_CLIENT_ID,
+                "redirect_uri": MELI_REDIRECT_URI,
+                "state": MELI_STATE_PENDENTE,
+            })
+
+            self.send_response(302)
+            self.send_header("Location", url)
+            self.end_headers()
+            return
+
+        if caminho.path == "/oauth/mercadolivre/callback":
+            estado = parametros.get("state", [None])[0]
+            codigo = parametros.get("code", [None])[0]
+            erro = parametros.get("error", [None])[0]
+
+            if erro:
+                self.responder(400, "O Mercado Livre recusou ou cancelou a autorização.")
+                return
+
+            if not estado or estado != MELI_STATE_PENDENTE:
+                self.responder(400, "Estado inválido ou expirado. Inicie a autorização novamente.")
+                return
+
+            if not codigo:
+                self.responder(400, "Código de autorização não recebido.")
+                return
+
+            MELI_STATE_PENDENTE = None
+
+            try:
+                resposta = requests.post(
+                    MELI_TOKEN_URL,
+                    headers={"Accept": "application/json"},
+                    data={
+                        "grant_type": "authorization_code",
+                        "client_id": MELI_CLIENT_ID,
+                        "client_secret": MELI_CLIENT_SECRET,
+                        "code": codigo,
+                        "redirect_uri": MELI_REDIRECT_URI,
+                    },
+                    timeout=30,
+                )
+                resposta.raise_for_status()
+                dados = resposta.json()
+                salvar_tokens_mercadolivre(dados)
+
+                logging.info("Autorização do Mercado Livre concluída.")
+                self.responder(
+                    200,
+                    "Mercado Livre autorizado! Tokens salvos no Supabase."
+                )
+
+            except Exception:
+                logging.exception("Falha na autorização do Mercado Livre.")
+                self.responder(
+                    500,
+                    "Não foi possível concluir a autorização. Confira os logs do Render."
+                )
+            return
+
+        self.responder(404, "Rota não encontrada.")
 
     def log_message(self, format, *args):
         return
