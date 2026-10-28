@@ -358,9 +358,42 @@ def validar_produto(produto, categoria):
 # BUSCA DE OFERTAS
 # ==================================================
 
+
 def buscar_candidatos():
     candidatos = []
     ids_desta_busca = set()
+
+    termos_bloqueados = [
+        "saco para aspirador",
+        "sacos para aspirador",
+        "refil",
+        "peca de reposicao",
+        "peça de reposição",
+        "reposicao",
+        "reposição",
+        "borracha de vedacao",
+        "borracha de vedação",
+        "parafuso avulso",
+        "suporte de teto para tv",
+        "suporte de parede para tv",
+        "controle remoto compativel",
+        "controle remoto compatível",
+    ]
+
+    def numero_seguro(valor):
+        try:
+            return float(valor or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def normalizar(texto):
+        texto = str(texto or "").lower()
+        texto = unicodedata.normalize("NFKD", texto)
+        return "".join(
+            caractere
+            for caractere in texto
+            if not unicodedata.combining(caractere)
+        )
 
     for categoria, config in CATEGORIAS.items():
         for termo in config["termos"]:
@@ -375,6 +408,18 @@ def buscar_candidatos():
 
                 for produto in produtos:
                     if not validar_produto(produto, categoria):
+                        continue
+
+                    titulo = normalizar(produto.get("titulo", ""))
+
+                    if any(
+                        bloqueado in titulo
+                        for bloqueado in termos_bloqueados
+                    ):
+                        logging.info(
+                            "Produto ignorado por filtro: %s",
+                            produto.get("titulo", ""),
+                        )
                         continue
 
                     chave = chave_produto(produto)
@@ -392,6 +437,22 @@ def buscar_candidatos():
                 logging.exception(
                     "Erro ao buscar o termo: %s", termo
                 )
+
+    candidatos.sort(
+        key=lambda produto: (
+            numero_seguro(produto.get("vendas")),
+            numero_seguro(produto.get("avaliacao")),
+            produto.get("_desconto_numero", 0),
+        ),
+        reverse=True,
+    )
+
+    logging.info(
+        "Total de candidatos aprovados após filtros: %s",
+        len(candidatos),
+    )
+
+    return candidatos
 
     
     def numero_seguro(valor):
