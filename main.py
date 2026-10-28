@@ -422,6 +422,7 @@ def buscar_candidatos():
 # ENVIO PARA O TELEGRAM
 # ==================================================
 
+
 def enviar_telegram(produto, categoria):
     canal = CANAIS.get(categoria)
 
@@ -438,21 +439,38 @@ def enviar_telegram(produto, categoria):
     link = produto["link_afiliado"]
     foto = str(produto.get("foto") or "").strip()
 
-    preco_formatado = (
-        f"R$ {preco:,.2f}"
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
-    )
+    def formatar_preco(valor):
+        return (
+            f"R$ {valor:,.2f}"
+            .replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
+
+    preco_formatado = formatar_preco(preco)
+
+    # Calcula o preço original estimado usando o desconto anunciado.
+    preco_original = None
+    if 0 < desconto < 100 and preco > 0:
+        preco_original = preco / (1 - desconto / 100)
+
+    if preco_original and preco_original > preco:
+        linha_preco = (
+            f"💸 De: {formatar_preco(preco_original)}\n"
+            f"🔥 Por: {preco_formatado}\n"
+        )
+    else:
+        linha_preco = f"💰 Preço: {preco_formatado}\n"
 
     mensagem = (
         f"🔥 OFERTA ENCONTRADA!\n\n"
         f"📦 {titulo}\n\n"
-        f"💰 Preço anunciado: {preco_formatado}\n"
+        f"{linha_preco}"
         f"🏷️ Desconto anunciado: {desconto:.0f}%\n\n"
         f"🛒 Confira aqui:\n{link}\n\n"
-        f"ℹ️ Preço e disponibilidade podem mudar. "
-        f"Consulte o valor atual no anúncio.\n\n"
+        f"ℹ️ O preço original é estimado a partir do "
+        f"desconto anunciado. Confira os valores no anúncio.\n"
+        f"Preço e disponibilidade podem mudar.\n"
     )
 
     base_url = (
@@ -498,6 +516,7 @@ def enviar_telegram(produto, categoria):
     except Exception:
         logging.exception("Falha ao publicar no Telegram.")
         return False
+
 
 
 # ==================================================
