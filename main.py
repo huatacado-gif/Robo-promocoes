@@ -410,12 +410,38 @@ def buscar_candidatos():
                     if not validar_produto(produto, categoria):
                         continue
 
-                    titulo = normalizar(produto.get("titulo", ""))
+                    
+titulo = normalizar(produto.get("titulo", ""))
 
-                    if any(
-                        bloqueado in titulo
-                        for bloqueado in termos_bloqueados
-                    ):
+# Bloqueia brinquedos e produtos infantis apenas
+# nos canais de ferramentas e eletronicos.
+termos_infantis = [
+    "infantil",
+    "brinquedo",
+    "brinquedos",
+    "didatico",
+    "didatica",
+    "para crianca",
+    "para criancas",
+    "de crianca",
+    "de criancas",
+]
+
+if categoria in ("ferramentas", "eletronicos") and any(
+    termo in titulo for termo in termos_infantis
+):
+    logging.info(
+        "Produto infantil ignorado em %s: %s",
+        categoria,
+        produto.get("titulo", ""),
+    )
+    continue
+
+if any(
+    bloqueado in titulo
+    for bloqueado in termos_bloqueados
+):
+
                         logging.info(
                             "Produto ignorado por filtro: %s",
                             produto.get("titulo", ""),
