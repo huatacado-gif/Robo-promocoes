@@ -55,44 +55,58 @@ logging.basicConfig(
 # CATEGORIAS E DESCONTOS MÍNIMOS
 # ==================================================
 
+
 CATEGORIAS = {
     "utilidades": {
-        "nome": "Utilidades Domésticas",
+        "nome": "Casa, cozinha e achadinhos",
         "desconto_minimo": 30,
         "termos": [
+            "air fryer",
+            "jogo de panelas",
+            "liquidificador",
             "organizador de cozinha",
-            "utensilios domesticos",
-            "organizadores para casa",
+            "organizador para casa",
+            "aspirador de po",
+            "ventilador",
+            "luminaria led",
+            "garrafa termica",
+            "utensilios de cozinha",
+            "achadinhos para casa",
         ],
     },
     "ferramentas": {
         "nome": "Ferramentas",
-        "desconto_minimo": 25,
+        "desconto_minimo": 30,
         "termos": [
             "parafusadeira",
             "furadeira",
-            "jogo de ferramentas",
+            "kit ferramentas",
+            "jogo de chaves",
+            "maleta de ferramentas",
+            "chave de impacto",
             "ferramentas eletricas",
         ],
     },
     "eletronicos": {
-        "nome": "Eletrônicos e Eletrodomésticos",
-        "desconto_minimo": 20,
+        "nome": "Eletrônicos e acessórios para celular",
+        "desconto_minimo": 30,
         "termos": [
             "fone bluetooth",
             "smartwatch",
             "caixa de som bluetooth",
-            "acessorios para celular",
-            "smart tv",
-            "televisao",
-            "ar condicionado",
-            "air fryer",
-            "liquidificador",
-            "ventilador",
-            "aspirador de po",
+            "carregador turbo",
+            "carregador sem fio",
+            "cabo usb c",
+            "suporte celular",
+            "power bank",
+            "teclado sem fio",
+            "mouse sem fio",
+            "lampada inteligente",
+            "camera wifi",
         ],
     },
 }
+
 
 
 # ==================================================
