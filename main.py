@@ -835,8 +835,45 @@ class HealthHandler(BaseHTTPRequestHandler):
                     },
                     timeout=30,
                 )
-                resposta.raise_for_status()
-                dados = resposta.json()
+
+                try:
+                    dados = resposta.json()
+                except ValueError:
+                    logging.error(
+                        "Mercado Livre OAuth: resposta não JSON. HTTP %s",
+                        resposta.status_code,
+                    )
+                    raise RuntimeError(
+                        "Resposta inválida do Mercado Livre."
+                    )
+
+                if resposta.status_code >= 400:
+                    logging.error(
+                        "Mercado Livre OAuth: HTTP %s | erro=%s | mensagem=%s",
+                        resposta.status_code,
+                        dados.get("error", "não informado"),
+                        dados.get("message", "sem mensagem"),
+                    )
+                    raise RuntimeError(
+                        "Mercado Livre recusou a troca do código por tokens."
+                    )
+
+                campos_presentes = [
+                    campo
+                    for campo in (
+                        "access_token",
+                        "refresh_token",
+                        "expires_in",
+                        "user_id",
+                    )
+                    if dados.get(campo) is not None
+                ]
+
+                logging.info(
+                    "Mercado Livre OAuth: campos recebidos: %s",
+                    ", ".join(campos_presentes) or "nenhum",
+                )
+
                 salvar_tokens_mercadolivre(dados)
 
                 logging.info("Autorização do Mercado Livre concluída.")
