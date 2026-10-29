@@ -177,17 +177,17 @@ def normalizar_titulo(titulo):
 
 def supabase_headers(prefer=None):
     if not SUPABASE_URL or not SUPABASE_KEY:
-        raise RuntimeError(
-            "SUPABASE_URL ou SUPABASE_SECRET_KEY não configurada no Render."
-        )
+        raise RuntimeError("Supabase não configurado.")
+
     headers = {
-        # As chaves novas sb_secret_ devem ser enviadas no cabeçalho apikey.
-        # Não as envie como Bearer: elas não são JWTs.
         "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json",
     }
+
     if prefer:
         headers["Prefer"] = prefer
+
     return headers
 
 
