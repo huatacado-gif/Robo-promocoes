@@ -431,6 +431,8 @@ def buscar_candidatos():
         "kit ferramentas infantil",
         "chaveiro ferramenta",
         "acessorio decorativo",
+        "Motor para Aspirador",
+        "Puxador Porta Geladeira",
     ]
 
     termos_infantis = [
