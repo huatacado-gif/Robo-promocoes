@@ -159,6 +159,12 @@ def buscar_produtos(termo, limite=10):
         headers={"Authorization": f"Bearer {token}"},
         timeout=TIMEOUT,
     )
+    if not resposta.ok:
+    logging.error(
+        "Erro na busca Mercado Livre: HTTP %s | Resposta: %s",
+        resposta.status_code,
+        resposta.text[:1000]
+    )
     resposta.raise_for_status()
 
     dados = resposta.json()
