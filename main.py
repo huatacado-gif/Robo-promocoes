@@ -844,6 +844,57 @@ class HealthHandler(BaseHTTPRequestHandler):
         caminho = urlparse(self.path)
         parametros = parse_qs(caminho.query)
 
+        if caminho.path == "/diagnostico/mercadolivre":
+            chave = parametros.get("key", [""])[0]
+            chave_configurada = os.getenv("MELI_TEST_KEY", "").strip()
+
+            if (
+                not chave_configurada
+                or not secrets.compare_digest(chave, chave_configurada)
+            ):
+                self.responder(403, "Acesso negado.")
+                return
+
+            try:
+                from mercadolivre_api import buscar_produtos
+
+                produtos = buscar_produtos("furadeira", limite=3)
+
+                resultado = {
+                    "status": "ok",
+                    "quantidade": len(produtos),
+                    "produtos": [
+                        {
+                            "titulo": p["titulo"],
+                            "preco": p["preco_min"]
+                        }
+                        for p in produtos
+                    ]
+                }
+
+                corpo = json.dumps(
+                    resultado, ensure_ascii=False
+                ).encode("utf-8")
+
+                self.send_response(200)
+                self.send_header(
+                    "Content-Type", "application/json; charset=utf-8"
+                )
+                self.send_header(
+                    "Content-Length", str(len(corpo))
+                )
+                self.end_headers()
+                self.wfile.write(corpo)
+
+            except Exception:
+                logging.exception("Falha no teste do Mercado Livre.")
+                self.responder(
+                    500,
+                    "Teste falhou. Consulte os logs do Render."
+                )
+
+            return
+
         if caminho.path == "/":
             self.responder(200, "Robo de ofertas ativo")
             return
