@@ -323,6 +323,7 @@ def desconto_percentual(valor):
     return desconto
 
 
+
 def validar_produto(produto, categoria):
     titulo = str(produto.get("titulo") or "").strip()
     link = str(produto.get("link_afiliado") or "").strip()
@@ -343,15 +344,58 @@ def validar_produto(produto, categoria):
     if desconto is None:
         return False
 
+    # Nota e quantidade de avaliações, quando disponíveis.
+    avaliacao = numero(produto.get("avaliacao"))
+
+    total_avaliacoes = None
+    for campo in (
+        "quantidade_avaliacoes",
+        "total_avaliacoes",
+        "numero_avaliacoes",
+        "avaliacoes",
+        "review_count",
+    ):
+        valor = produto.get(campo)
+        if valor is not None:
+            total_avaliacoes = numero(valor)
+            if total_avaliacoes is not None:
+                break
+
     minimo = CATEGORIAS[categoria]["desconto_minimo"]
+
+    # Produtos bem avaliados podem entrar com desconto a partir de 15%.
+    if (
+        avaliacao is not None
+        and avaliacao >= 4.5
+        and total_avaliacoes is not None
+        and total_avaliacoes >= 20
+    ):
+        minimo = 15
+
+    # Não aprovar produtos mal avaliados com histórico suficiente.
+    if (
+        avaliacao is not None
+        and avaliacao < 4.0
+        and total_avaliacoes is not None
+        and total_avaliacoes >= 20
+    ):
+        logging.info(
+            "Produto rejeitado por avaliação baixa: %s | Nota: %s",
+            titulo,
+            avaliacao,
+        )
+        return False
 
     if desconto < minimo:
         return False
 
     produto["_preco_numero"] = preco
     produto["_desconto_numero"] = desconto
+    produto["_avaliacao_numero"] = avaliacao
+    produto["_total_avaliacoes"] = total_avaliacoes
 
     return True
+
 
 
 # ==================================================
@@ -375,6 +419,18 @@ def buscar_candidatos():
         "suporte de teto para tv",
         "suporte de parede para tv",
         "controle remoto compativel",
+        "lixa",
+        "lixas",
+        "lixa de unha",
+        "lima de unha",
+        "polidor de unha",
+        "adesivo",
+        "unha postica",
+        "unhas postiças",
+        "brinquedo de ferramentas",
+        "kit ferramentas infantil",
+        "chaveiro ferramenta",
+        "acessorio decorativo",
     ]
 
     termos_infantis = [
