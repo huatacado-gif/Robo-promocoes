@@ -359,6 +359,7 @@ def validar_produto(produto, categoria):
 # ==================================================
 
 
+
 def buscar_candidatos():
     candidatos = []
     ids_desta_busca = set()
@@ -368,16 +369,24 @@ def buscar_candidatos():
         "sacos para aspirador",
         "refil",
         "peca de reposicao",
-        "peça de reposição",
         "reposicao",
-        "reposição",
         "borracha de vedacao",
-        "borracha de vedação",
         "parafuso avulso",
         "suporte de teto para tv",
         "suporte de parede para tv",
         "controle remoto compativel",
-        "controle remoto compatível",
+    ]
+
+    termos_infantis = [
+        "infantil",
+        "brinquedo",
+        "brinquedos",
+        "didatico",
+        "didatica",
+        "para crianca",
+        "para criancas",
+        "de crianca",
+        "de criancas",
     ]
 
     def numero_seguro(valor):
@@ -410,38 +419,24 @@ def buscar_candidatos():
                     if not validar_produto(produto, categoria):
                         continue
 
-                    
-titulo = normalizar(produto.get("titulo", ""))
+                    titulo = normalizar(produto.get("titulo", ""))
 
-# Bloqueia brinquedos e produtos infantis apenas
-# nos canais de ferramentas e eletronicos.
-termos_infantis = [
-    "infantil",
-    "brinquedo",
-    "brinquedos",
-    "didatico",
-    "didatica",
-    "para crianca",
-    "para criancas",
-    "de crianca",
-    "de criancas",
-]
+                    # Bloqueia produtos infantis em ferramentas e eletronicos.
+                    if (
+                        categoria in ("ferramentas", "eletronicos")
+                        and any(item in titulo for item in termos_infantis)
+                    ):
+                        logging.info(
+                            "Produto infantil ignorado em %s: %s",
+                            categoria,
+                            produto.get("titulo", ""),
+                        )
+                        continue
 
-if categoria in ("ferramentas", "eletronicos") and any(
-    termo in titulo for termo in termos_infantis
-):
-    logging.info(
-        "Produto infantil ignorado em %s: %s",
-        categoria,
-        produto.get("titulo", ""),
-    )
-    continue
-
-if any(
-    bloqueado in titulo
-    for bloqueado in termos_bloqueados
-):
-
+                    # Bloqueia itens de reposicao e outros produtos especificos.
+                    if any(
+                        item in titulo for item in termos_bloqueados
+                    ):
                         logging.info(
                             "Produto ignorado por filtro: %s",
                             produto.get("titulo", ""),
@@ -454,7 +449,6 @@ if any(
                         continue
 
                     ids_desta_busca.add(chave)
-
                     produto["_categoria"] = categoria
                     produto["_chave"] = chave
                     candidatos.append(produto)
@@ -464,11 +458,12 @@ if any(
                     "Erro ao buscar o termo: %s", termo
                 )
 
+    # Prioriza vendas, depois avaliacao e por fim desconto.
     candidatos.sort(
         key=lambda produto: (
             numero_seguro(produto.get("vendas")),
             numero_seguro(produto.get("avaliacao")),
-            produto.get("_desconto_numero", 0),
+            numero_seguro(produto.get("_desconto_numero")),
         ),
         reverse=True,
     )
@@ -480,29 +475,6 @@ if any(
 
     return candidatos
 
-    
-    def numero_seguro(valor):
-        try:
-            return float(valor or 0)
-        except (TypeError, ValueError):
-            return 0.0
-
-    candidatos.sort(
-        key=lambda p: (
-            numero_seguro(p.get("vendas")),
-            numero_seguro(p.get("avaliacao")),
-            p["_desconto_numero"],
-        ),
-        reverse=True,
-    )
-
-
-    logging.info(
-        "Total de candidatos válidos: %s",
-        len(candidatos),
-    )
-
-    return candidatos
 
 
 # ==================================================
