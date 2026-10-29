@@ -762,7 +762,7 @@ def salvar_tokens_mercadolivre(dados):
         json=payload,
         timeout=SUPABASE_TIMEOUT,
     )
-        if not resposta.ok:
+    if not resposta.ok:
         logging.error(
             "Supabase OAuth | HTTP %s | resposta: %s",
             resposta.status_code,
