@@ -38,6 +38,7 @@ from shopee_api import buscar_ofertas
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "").strip()
 TELEGRAM_ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID", "").strip()
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
 
 # O histórico permanente fica no Supabase. A chave secreta deve existir
 
@@ -1253,6 +1254,7 @@ def executar_ciclo(horario_slot):
 # ==================================================
 
 SESSOES_ML = {}
+EXECUCAO_MANUAL_LOCK = threading.Lock()
 CATEGORIAS_VALIDAS = ("utilidades", "ferramentas", "eletronicos")
 
 
@@ -1362,8 +1364,26 @@ def processar_mensagem_telegram(mensagem):
     if comando == "/ml":
         iniciar_cadastro_ml(chat_id, user_id)
         return
-    if comando in ("/start", "/ajuda"):
-        responder_usuario(chat_id, "Comandos disponíveis:\n/ml — cadastrar oferta manual do Mercado Livre\n/cancelar — cancelar cadastro")
+    if comando == "/start":
+        if EXECUCAO_MANUAL_LOCK.locked():
+            responder_usuario(chat_id, "A busca da Shopee já está em andamento. Aguarde a conclusão.")
+            return
+        responder_usuario(chat_id, "🚀 Recebi seu comando! Estou iniciando agora a busca de ofertas da Shopee. Você receberá as ofertas nos canais configurados.\n\n/ml — cadastrar oferta do Mercado Livre")
+        def executar_manual():
+            if not EXECUCAO_MANUAL_LOCK.acquire(blocking=False):
+                return
+            try:
+                executar_ciclo("manual")
+                responder_usuario(chat_id, "✅ Busca manual da Shopee finalizada. Confira os canais e os logs do Render.")
+            except Exception:
+                logging.exception("Falha na busca manual solicitada pelo Telegram.")
+                responder_usuario(chat_id, "⚠️ Ocorreu um erro durante a busca da Shopee. Confira os logs do Render.")
+            finally:
+                EXECUCAO_MANUAL_LOCK.release()
+        threading.Thread(target=executar_manual, daemon=True).start()
+        return
+    if comando == "/ajuda":
+        responder_usuario(chat_id, "Comandos disponíveis:\n/start — iniciar busca manual da Shopee\n/ml — cadastrar oferta manual do Mercado Livre\n/cancelar — cancelar cadastro")
         return
 
     sessao = SESSOES_ML.get(user_id)
@@ -1469,64 +1489,72 @@ def processar_mensagem_telegram(mensagem):
         SESSOES_ML.pop(user_id, None)
 
 
-def ouvir_telegram():
+def configurar_webhook():
+    """Registra o webhook do Telegram apontando para este serviço Render."""
     if not TELEGRAM_TOKEN:
-        logging.error("Telegram polling não iniciado: TELEGRAM_TOKEN ausente.")
+        logging.error("Webhook não configurado: TELEGRAM_TOKEN ausente.")
         return
-    offset = None
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
-    logging.info("Receptor de comandos do Telegram iniciado.")
-    # Ignora mensagens antigas pendentes; processa apenas mensagens novas após iniciar.
+    host = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+    if not host:
+        logging.error("Webhook não configurado: RENDER_EXTERNAL_URL ausente no ambiente Render.")
+        return
+    segredo = TELEGRAM_WEBHOOK_SECRET or hashlib.sha256((TELEGRAM_TOKEN + ":telegram-webhook").encode()).hexdigest()
+    url = f"{host}/telegram/webhook"
     try:
-        inicial = requests.get(url, params={"timeout": 0}, timeout=10)
-        inicial.raise_for_status()
-        dados_iniciais = inicial.json()
-        if dados_iniciais.get("ok") and dados_iniciais.get("result"):
-            offset = max(item["update_id"] for item in dados_iniciais["result"]) + 1
+        resposta = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
+            json={"url": url, "secret_token": segredo, "allowed_updates": ["message"], "drop_pending_updates": False},
+            timeout=20,
+        )
+        resposta.raise_for_status()
+        dados = resposta.json()
+        if dados.get("ok"):
+            logging.info("Webhook do Telegram configurado: %s", url)
+        else:
+            logging.error("Telegram recusou configurar webhook: %s", dados.get("description"))
     except Exception:
-        logging.exception("Não foi possível inicializar o receptor do Telegram.")
-    while True:
-        try:
-            params = {"timeout": 20}
-            if offset is not None:
-                params["offset"] = offset
-            resposta = requests.get(url, params=params, timeout=30)
-            resposta.raise_for_status()
-            dados = resposta.json()
-            if not dados.get("ok"):
-                logging.error("Telegram getUpdates retornou erro.")
-                time.sleep(5)
-                continue
-            for update in dados.get("result", []):
-                offset = update["update_id"] + 1
-                processar_mensagem_telegram(update.get("message"))
-        except Exception:
-            logging.exception("Erro ao receber mensagens do Telegram.")
-            time.sleep(5)
+        logging.exception("Não foi possível configurar o webhook do Telegram.")
 
-
-
-# ==================================================
 
 # MONITORAMENTO DO RENDER
 
 # ==================================================
 
 class HealthHandler(BaseHTTPRequestHandler):
+    def _responder(self, status, corpo=b"ok"):
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(corpo)))
+        self.end_headers()
+        self.wfile.write(corpo)
+
     def do_GET(self):
         caminho = urlparse(self.path)
         if caminho.path == "/":
-            corpo = b"Robo de ofertas ativo"
-            self.send_response(200)
-            self.send_header("Content-Length", str(len(corpo)))
-            self.end_headers()
-            self.wfile.write(corpo)
+            self._responder(200, b"Robo de ofertas ativo")
         else:
-            corpo = b"Rota nao encontrada"
-            self.send_response(404)
-            self.send_header("Content-Length", str(len(corpo)))
-            self.end_headers()
-            self.wfile.write(corpo)
+            self._responder(404, b"Rota nao encontrada")
+
+    def do_POST(self):
+        if urlparse(self.path).path != "/telegram/webhook":
+            self._responder(404, b"Rota nao encontrada")
+            return
+        segredo = TELEGRAM_WEBHOOK_SECRET or hashlib.sha256((TELEGRAM_TOKEN + ":telegram-webhook").encode()).hexdigest()
+        recebido = self.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not secrets.compare_digest(recebido, segredo):
+            self._responder(403, b"forbidden")
+            return
+        try:
+            tamanho = int(self.headers.get("Content-Length", "0"))
+            if tamanho <= 0 or tamanho > 1024 * 1024:
+                self._responder(400, b"invalid body")
+                return
+            update = json.loads(self.rfile.read(tamanho).decode("utf-8"))
+            processar_mensagem_telegram(update.get("message"))
+            self._responder(200, b"ok")
+        except Exception:
+            logging.exception("Falha ao processar atualização recebida pelo webhook.")
+            self._responder(500, b"error")
 
     def log_message(self, format, *args):
         return
