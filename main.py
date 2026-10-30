@@ -263,7 +263,6 @@ def buscar_candidatos():
     candidatos = []
     ids_desta_busca = set()
 
-    # Filtros de bloqueio reforçados para motores e peças
     termos_bloqueados = [
         "motor", "motores", "motor de partida", "motor elétrico", "motor eletrico",
         "motor de moto", "peça de motor", "peca de motor", "saco para aspirador",
@@ -404,7 +403,6 @@ def executar_ciclo(horario_slot):
     candidatos = buscar_candidatos()
     vistos = set(estado.get("vistos", []))
 
-    # Limite individual de 2 por categoria por execução
     contadores_execucao = {"utilidades": 0, "ferramentas": 0, "eletronicos": 0}
     total_enviados = 0
 
@@ -456,7 +454,7 @@ def executar_ciclo(horario_slot):
     logging.info("Lote %s concluído. Ofertas enviadas: %s", horario_slot, total_enviados)
 
 # ==================================================
-# COMANDOS E WEBOOK TELEGRAM
+# COMANDOS E WEBHOOK TELEGRAM
 # ==================================================
 
 SESSOES_ML = {}
@@ -517,4 +515,186 @@ def processar_mensagem_telegram(mensagem):
         return
 
     if comando == "/sh":
-        if EXECUCAO_MANUAL_LOCK
+        if EXECUCAO_MANUAL_LOCK.locked():
+            responder_usuario(chat_id, "A busca da Shopee já está em andamento.")
+            return
+        responder_usuario(chat_id, "🚀 Busca manual iniciada! Buscando produtos nas 3 categorias...")
+        
+        def rodar():
+            if EXECUCAO_MANUAL_LOCK.acquire(blocking=False):
+                try:
+                    executar_ciclo("manual")
+                    responder_usuario(chat_id, "✅ Busca manual da Shopee finalizada com sucesso!")
+                except Exception:
+                    responder_usuario(chat_id, "⚠️ Ocorreu um erro durante a busca. Verifique os logs.")
+                finally:
+                    EXECUCAO_MANUAL_LOCK.release()
+
+        threading.Thread(target=rodar, daemon=True).start()
+        return
+
+    if comando == "/ml":
+        SESSOES_ML[user_id] = {"chat_id": chat_id, "etapa": "link"}
+        responder_usuario(chat_id, "1/5 — Envie o link de afiliado (Mercado Livre, Magalu, Amazon, AliExpress ou TikTok).")
+        return
+
+    sessao = SESSOES_ML.get(user_id)
+    if not sessao:
+        return
+
+    etapa = sessao["etapa"]
+    if etapa == "link":
+        host = (urlparse(texto).hostname or "").lower()
+        plataforma = "desconhecida"
+        if "mercadolivre" in host or "meli.la" in host:
+            plataforma = "Mercado Livre"
+        elif "magazineluiza" in host or "magalu" in host:
+            plataforma = "Magalu"
+        elif "amazon" in host or "amzn" in host:
+            plataforma = "Amazon"
+        elif "aliexpress" in host or "ali.ski" in host:
+            plataforma = "AliExpress"
+        elif "tiktok" in host:
+            plataforma = "TikTok Shop"
+
+        sessao["link"] = texto
+        sessao["plataforma"] = plataforma
+        sessao["etapa"] = "titulo"
+        responder_usuario(chat_id, f"Plataforma identificada: {plataforma}\n2/5 — Envie o nome do produto.")
+    elif etapa == "titulo":
+        sessao["titulo"] = texto
+        sessao["etapa"] = "preco_atual"
+        responder_usuario(chat_id, "3/5 — Qual é o preço atual? (Ex: 149,90)")
+    elif etapa == "preco_atual":
+        val = numero(texto)
+        if not val or val <= 0:
+            responder_usuario(chat_id, "Preço inválido. Digite um valor numérico.")
+            return
+        sessao["preco_atual"] = val
+        sessao["etapa"] = "preco_anterior"
+        responder_usuario(chat_id, "4/5 — Qual o preço anterior? (Digite 0 se não houver)")
+    elif etapa == "preco_anterior":
+        val = numero(texto)
+        sessao["preco_anterior"] = val if val and val > 0 else 0
+        sessao["etapa"] = "categoria"
+        responder_usuario(chat_id, "5/5 — Escolha a categoria: utilidades, ferramentas ou eletronicos")
+    elif etapa == "categoria":
+        cat = texto.lower().strip()
+        if cat not in CANAIS:
+            responder_usuario(chat_id, "Categoria inválida. Escolha: utilidades, ferramentas ou eletronicos.")
+            return
+
+        chave = "manual:" + hashlib.sha256(sessao["link"].encode()).hexdigest()[:24]
+        try:
+            if not reservar_no_supabase(chave, sessao["titulo"], origem=sessao["plataforma"].lower().replace(" ", "")):
+                responder_usuario(chat_id, "Esta oferta já foi cadastrada anteriormente.")
+                SESSOES_ML.pop(user_id, None)
+                return
+        except Exception:
+            responder_usuario(chat_id, "Erro ao registrar no Supabase.")
+            SESSOES_ML.pop(user_id, None)
+            return
+
+        p_atual = sessao["preco_atual"]
+        p_ant = sessao["preco_anterior"]
+        desc = round((1 - p_atual / p_ant) * 100) if p_ant > p_atual else 0
+
+        msg = (
+            f"🔥 <b>OFERTA ({sessao['plataforma'].upper()})!</b>\n\n"
+            f"📦 <b>{html.escape(sessao['titulo'])}</b>\n\n"
+            f"🔥 <b>Por: R$ {p_atual:,.2f}</b>\n"
+            + (f"🏷️ <b>{desc}% OFF</b>\n" if desc > 0 else "")
+            + f"\n🛒 <a href=\"{html.escape(sessao['link'])}\">COMPRAR AGORA</a>"
+        )
+
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                data={"chat_id": CANAIS[cat], "text": msg, "parse_mode": "HTML"},
+                timeout=20,
+            )
+            responder_usuario(chat_id, "✅ Oferta cadastrada e publicada com sucesso!")
+        except Exception:
+            responder_usuario(chat_id, "Falha ao enviar mensagem para o canal Telegram.")
+
+        SESSOES_ML.pop(user_id, None)
+
+# ==================================================
+# SERVIDOR WEB E WEBHOOK
+# ==================================================
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Robo Ativo")
+
+    def do_POST(self):
+        if urlparse(self.path).path != "/telegram/webhook":
+            self.send_response(404)
+            self.end_headers()
+            return
+
+        segredo = TELEGRAM_WEBHOOK_SECRET or hashlib.sha256((TELEGRAM_TOKEN + ":telegram-webhook").encode()).hexdigest()
+        recebido = self.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not secrets.compare_digest(recebido, segredo):
+            self.send_response(403)
+            self.end_headers()
+            return
+
+        tamanho = int(self.headers.get("Content-Length", "0"))
+        corpo = self.rfile.read(tamanho)
+        update = json.loads(corpo.decode("utf-8"))
+        processar_mensagem_telegram(update.get("message"))
+
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, format, *args):
+        return
+
+def configurar_webhook():
+    if not TELEGRAM_TOKEN:
+        return
+    host = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
+    if not host:
+        return
+    segredo = TELEGRAM_WEBHOOK_SECRET or hashlib.sha256((TELEGRAM_TOKEN + ":telegram-webhook").encode()).hexdigest()
+    url = f"{host}/telegram/webhook"
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
+            json={"url": url, "secret_token": segredo, "allowed_updates": ["message"]},
+            timeout=20,
+        )
+    except Exception:
+        logging.exception("Erro ao configurar Webhook.")
+
+def iniciar_robo():
+    while True:
+        try:
+            agora = datetime.now(FUSO)
+            estado = carregar_estado()
+            execucoes = estado.setdefault("execucoes_agendadas", {})
+            hoje = agora.date().isoformat()
+
+            for hora, minuto in HORARIOS_PUBLICACAO:
+                horario_slot = f"{hora:02d}:{minuto:02d}"
+                chave_slot = f"{hoje}|{horario_slot}"
+                instante_slot = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+
+                if agora >= instante_slot and chave_slot not in execucoes:
+                    executar_ciclo(horario_slot)
+
+            time.sleep(INTERVALO_VERIFICACAO)
+        except Exception:
+            logging.exception("Erro no agendador.")
+            time.sleep(INTERVALO_VERIFICACAO)
+
+if __name__ == "__main__":
+    porta = int(os.environ.get("PORT", "10000"))
+    threading.Thread(target=lambda: HTTPServer(("0.0.0.0", porta), HealthHandler).serve_forever(), daemon=True).start()
+    time.sleep(2)
+    configurar_webhook()
+    iniciar_robo()
