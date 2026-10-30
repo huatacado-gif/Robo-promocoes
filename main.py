@@ -1646,6 +1646,9 @@ if __name__ == "__main__":
 
                 ).start()
 
-                threading.Thread(target=ouvir_telegram, daemon=True).start()
+                # O recebimento das mensagens agora é feito pelo webhook HTTP.
+                # Não iniciar ouvir_telegram: essa função não existe nesta versão.
+                time.sleep(2)  # dá tempo para o servidor HTTP abrir a porta
+                configurar_webhook()
 
                 iniciar_robo()
