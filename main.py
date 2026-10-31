@@ -1,3 +1,4 @@
+
 import os
 import json
 import time
@@ -13,7 +14,7 @@ import html
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 from shopee_api import buscar_ofertas
@@ -37,18 +38,12 @@ CANAIS = {
     "eletronicos": os.getenv("CHANNEL_ELETRONICOS", "").strip(),
 }
 
-MAX_POSTS_DIA = int(os.getenv("MAX_POSTS_DAY", "18"))
-MAX_POR_CATEGORIA = 2
-
-HORARIOS_PUBLICACAO = [(6, 30), (11, 0), (19, 0)]
-INTERVALO_VERIFICACAO = 20
+MAX_OFERTAS_SH = 2
 
 FUSO = ZoneInfo("America/Sao_Paulo")
 ARQUIVO_ESTADO = Path("estado_robo.json")
 
-# Um único bloqueio para impedir ciclos simultâneos.
 EXECUCAO_LOCK = threading.Lock()
-
 SESSOES_ML = {}
 CATEGORIAS_VALIDAS = ("utilidades", "ferramentas", "eletronicos")
 
@@ -59,7 +54,58 @@ logging.basicConfig(
 
 
 # ==================================================
-# CATEGORIAS
+# MARKETPLACES
+# ==================================================
+
+MARKETPLACES = {
+    "1": {
+        "nome": "Mercado Livre",
+        "codigo": "mercadolivre",
+        "dominios": (
+            "mercadolivre.com.br",
+            "mercadolivre.com",
+            "mercadolibre.com",
+            "meli.la",
+        ),
+    },
+    "2": {
+        "nome": "Magalu",
+        "codigo": "magalu",
+        "dominios": (
+            "magazineluiza.com.br",
+            "magalu.com.br",
+        ),
+    },
+    "3": {
+        "nome": "Amazon",
+        "codigo": "amazon",
+        "dominios": (
+            "amazon.com.br",
+            "amazon.com",
+            "amzn.to",
+        ),
+    },
+    "4": {
+        "nome": "TikTok Shop",
+        "codigo": "tiktok",
+        "dominios": (
+            "tiktok.com",
+            "tiktokshop.com",
+        ),
+    },
+    "5": {
+        "nome": "AliExpress",
+        "codigo": "aliexpress",
+        "dominios": (
+            "aliexpress.com",
+            "a.aliexpress.com",
+        ),
+    },
+}
+
+
+# ==================================================
+# CATEGORIAS SHOPEE
 # ==================================================
 
 CATEGORIAS = {
@@ -78,6 +124,9 @@ CATEGORIAS = {
             "garrafa termica",
             "utensilios de cozinha",
             "achadinhos para casa",
+            "utensilios domesticos",
+            "acessorios para cozinha",
+            "organizadores domesticos",
         ],
     },
 
@@ -92,6 +141,14 @@ CATEGORIAS = {
             "maleta de ferramentas",
             "chave de impacto",
             "ferramentas eletricas",
+            "esmerilhadeira",
+            "maquina de solda",
+            "multimetro digital",
+            "trena digital",
+            "kit brocas",
+            "kit bits para parafusadeira",
+            "acessorios para ferramentas",
+            "jogo de soquetes",
         ],
     },
 
@@ -111,6 +168,13 @@ CATEGORIAS = {
             "mouse sem fio",
             "lampada inteligente",
             "camera wifi",
+            "acessorios gamer",
+            "camera de seguranca wifi",
+            "fone sem fio",
+            "hub usb",
+            "adaptador bluetooth",
+            "webcam",
+            "roteador wifi",
         ],
     },
 }
@@ -130,9 +194,7 @@ def data_local():
 
 def normalizar_titulo(titulo):
     texto = unicodedata.normalize("NFKD", str(titulo or ""))
-    texto = "".join(
-        c for c in texto if not unicodedata.combining(c)
-    )
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
     texto = texto.lower()
     texto = re.sub(r"[^a-z0-9]+", " ", texto)
     return " ".join(texto.split())
@@ -203,18 +265,17 @@ def chave_produto(produto):
 
 
 # ==================================================
-# ARQUIVO DE ESTADO
+# ESTADO LOCAL
 # ==================================================
 
 def carregar_estado():
-    estado_padrao = {
+    padrao = {
         "publicacoes": [],
         "vistos": [],
-        "execucoes_agendadas": {},
     }
 
     if not ARQUIVO_ESTADO.exists():
-        return estado_padrao
+        return padrao
 
     try:
         with ARQUIVO_ESTADO.open("r", encoding="utf-8") as arquivo:
@@ -222,63 +283,21 @@ def carregar_estado():
 
         estado.setdefault("publicacoes", [])
         estado.setdefault("vistos", [])
-        estado.setdefault("execucoes_agendadas", {})
 
         return estado
 
     except (OSError, json.JSONDecodeError):
-        logging.exception("Erro ao carregar estado do robô.")
-        return estado_padrao
+        logging.exception("Erro ao carregar estado.")
+        return padrao
 
 
 def salvar_estado(estado):
     temporario = ARQUIVO_ESTADO.with_suffix(".tmp")
 
     with temporario.open("w", encoding="utf-8") as arquivo:
-        json.dump(
-            estado,
-            arquivo,
-            ensure_ascii=False,
-            indent=2,
-        )
+        json.dump(estado, arquivo, ensure_ascii=False, indent=2)
 
     temporario.replace(ARQUIVO_ESTADO)
-
-
-def publicacoes_hoje(estado):
-    hoje = data_local()
-
-    return [
-        p for p in estado.get("publicacoes", [])
-        if p.get("data") == hoje
-    ]
-
-
-def contar_publicacoes_categoria(estado, categoria):
-    return sum(
-        1 for p in publicacoes_hoje(estado)
-        if p.get("categoria") == categoria
-    )
-
-
-def pode_publicar(estado, categoria):
-    total_hoje = len(publicacoes_hoje(estado))
-
-    if total_hoje >= MAX_POSTS_DIA:
-        return False, "O limite diário de publicações foi atingido."
-
-    total_categoria = contar_publicacoes_categoria(
-        estado,
-        categoria,
-    )
-
-    if total_categoria >= MAX_POR_CATEGORIA:
-        return False, (
-            f"O limite diário da categoria {categoria} "
-            "foi atingido."
-        )
-
-    return True, ""
 
 
 def registrar_publicacao(
@@ -288,13 +307,11 @@ def registrar_publicacao(
     categoria,
     preco,
     origem,
-    horario_slot,
     desconto=None,
 ):
     estado.setdefault("publicacoes", []).append({
         "data": data_local(),
         "data_hora": agora_local().isoformat(),
-        "horario_slot": horario_slot,
         "categoria": categoria,
         "id": str(chave),
         "titulo": str(titulo),
@@ -305,7 +322,6 @@ def registrar_publicacao(
 
     vistos = set(estado.get("vistos", []))
     vistos.add(str(chave))
-
     estado["vistos"] = list(vistos)[-5000:]
 
     salvar_estado(estado)
@@ -345,9 +361,7 @@ def carregar_historico_supabase():
 
         resposta = requests.get(
             url,
-            params={
-                "select": "id_shopee,titulo_normalizado"
-            },
+            params={"select": "id_shopee,titulo_normalizado"},
             headers=headers,
             timeout=SUPABASE_TIMEOUT,
         )
@@ -356,9 +370,7 @@ def carregar_historico_supabase():
         linhas = resposta.json()
 
         if not isinstance(linhas, list):
-            raise RuntimeError(
-                "Resposta inesperada do Supabase."
-            )
+            raise RuntimeError("Resposta inesperada do Supabase.")
 
         for linha in linhas:
             if linha.get("id_shopee"):
@@ -372,16 +384,10 @@ def carregar_historico_supabase():
 
         inicio += len(linhas)
 
-    logging.info(
-        "Histórico carregado: %s IDs e %s títulos.",
-        len(ids),
-        len(titulos),
-    )
-
     return ids, titulos
 
 
-def reservar_no_supabase(chave, titulo, origem="shopee"):
+def reservar_no_supabase(chave, titulo, origem):
     url = f"{SUPABASE_URL}/rest/v1/produtos_publicados"
 
     registro = {
@@ -401,7 +407,6 @@ def reservar_no_supabase(chave, titulo, origem="shopee"):
     )
 
     resposta.raise_for_status()
-
     resultado = resposta.json()
 
     return isinstance(resultado, list) and len(resultado) > 0
@@ -417,15 +422,13 @@ def importar_historico_local(estado):
         if not chave:
             continue
 
-        origem = publicacao.get("origem", "shopee")
-
         resposta = requests.post(
             url,
             json={
                 "id_shopee": str(chave),
                 "titulo": str(titulo or ""),
                 "titulo_normalizado": normalizar_titulo(titulo),
-                "origem": origem,
+                "origem": publicacao.get("origem", "shopee"),
             },
             headers=supabase_headers(
                 "resolution=ignore-duplicates,return=minimal"
@@ -437,7 +440,7 @@ def importar_historico_local(estado):
 
 
 # ==================================================
-# VALIDAÇÃO DE PRODUTOS SHOPEE
+# VALIDAÇÃO SHOPEE
 # ==================================================
 
 def validar_produto(produto, categoria):
@@ -464,20 +467,17 @@ def validar_produto(produto, categoria):
     avaliacao = numero(produto.get("avaliacao"))
     total_avaliacoes = None
 
-    campos_avaliacoes = (
+    for campo in (
         "quantidade_avaliacoes",
         "total_avaliacoes",
         "numero_avaliacoes",
         "avaliacoes",
         "review_count",
-    )
-
-    for campo in campos_avaliacoes:
+    ):
         valor = produto.get(campo)
 
         if valor is not None:
             total_avaliacoes = numero(valor)
-
             if total_avaliacoes is not None:
                 break
 
@@ -497,10 +497,6 @@ def validar_produto(produto, categoria):
         and total_avaliacoes is not None
         and total_avaliacoes >= 20
     ):
-        logging.info(
-            "Produto rejeitado por avaliação baixa: %s",
-            titulo,
-        )
         return False
 
     if desconto < minimo:
@@ -515,7 +511,7 @@ def validar_produto(produto, categoria):
 
 
 # ==================================================
-# BUSCA DE OFERTAS SHOPEE
+# BUSCA SHOPEE
 # ==================================================
 
 def buscar_candidatos():
@@ -533,14 +529,10 @@ def buscar_candidatos():
         "suporte de teto para tv",
         "suporte de parede para tv",
         "controle remoto compativel",
-        "lixa",
-        "lixas",
         "lixa de unha",
         "lima de unha",
         "polidor de unha",
-        "adesivo",
         "unha postica",
-        "unhas postiças",
         "brinquedo de ferramentas",
         "kit ferramentas infantil",
         "chaveiro ferramenta",
@@ -562,14 +554,9 @@ def buscar_candidatos():
     ]
 
     def normalizar(texto):
-        texto = unicodedata.normalize(
-            "NFKD",
-            str(texto or "").lower(),
-        )
-
+        texto = unicodedata.normalize("NFKD", str(texto or "").lower())
         return "".join(
-            c for c in texto
-            if not unicodedata.combining(c)
+            c for c in texto if not unicodedata.combining(c)
         )
 
     def numero_seguro(valor):
@@ -578,23 +565,29 @@ def buscar_candidatos():
         except (TypeError, ValueError):
             return 0.0
 
+    # Cada termo é pesquisado independentemente.
+    # Assim, nenhuma categoria fica limitada a uma busca geral.
+
     for categoria, config in CATEGORIAS.items():
         for termo in config["termos"]:
             try:
-                produtos = buscar_ofertas(termo)
+                produtos = buscar_ofertas(termo) or []
 
                 logging.info(
-                    "Busca Shopee | %s | encontrados: %s",
+                    "Shopee | categoria=%s | termo=%s | resultados=%s",
+                    categoria,
                     termo,
                     len(produtos),
                 )
 
                 for produto in produtos:
+                    if not isinstance(produto, dict):
+                        continue
+
                     if not validar_produto(produto, categoria):
                         continue
 
-                    titulo_original = produto.get("titulo", "")
-                    titulo = normalizar(titulo_original)
+                    titulo = normalizar(produto.get("titulo", ""))
 
                     if (
                         categoria in ("ferramentas", "eletronicos")
@@ -602,14 +595,9 @@ def buscar_candidatos():
                     ):
                         continue
 
-                    if any(
-                        item in titulo
-                        for item in termos_bloqueados
-                    ):
+                    if any(item in titulo for item in termos_bloqueados):
                         continue
 
-                    # Evita bloquear celulares Motorola por conter
-                    # a palavra "motor" no nome da marca.
                     if (
                         re.search(r"\bmotores?\b", titulo)
                         and "motorola" not in titulo
@@ -629,78 +617,67 @@ def buscar_candidatos():
                     candidatos.append(produto)
 
             except Exception:
-                logging.exception(
-                    "Erro ao buscar o termo: %s",
-                    termo,
-                )
+                logging.exception("Erro na busca do termo: %s", termo)
+
+    # Classificação geral: vendas, nota, desconto e quantidade
+    # de avaliações. A seleção final será feita entre todas
+    # as categorias, e não separadamente por categoria.
 
     candidatos.sort(
-        key=lambda produto: (
-            numero_seguro(produto.get("vendas")),
-            numero_seguro(produto.get("avaliacao")),
-            numero_seguro(produto.get("_desconto_numero")),
+        key=lambda p: (
+            numero_seguro(p.get("vendas")),
+            numero_seguro(p.get("_avaliacao_numero")),
+            numero_seguro(p.get("_total_avaliacoes")),
+            numero_seguro(p.get("_desconto_numero")),
         ),
         reverse=True,
     )
 
-    logging.info(
-        "Total de candidatos aprovados: %s",
-        len(candidatos),
-    )
+    logging.info("Candidatos aprovados: %s", len(candidatos))
 
     return candidatos
 
 
 # ==================================================
-# ENVIO DE OFERTAS SHOPEE
+# ENVIO SHOPEE
 # ==================================================
 
 def enviar_telegram(produto, categoria):
     canal = CANAIS.get(categoria)
 
     if not TELEGRAM_TOKEN or not canal:
-        logging.error(
-            "Token ou canal não configurado para %s.",
-            categoria,
-        )
+        logging.error("Token ou canal não configurado: %s", categoria)
         return False
 
-    titulo_original = str(
-        produto.get("titulo") or "Oferta especial"
-    ).strip()
-
+    titulo_original = str(produto.get("titulo") or "Oferta especial").strip()
     titulo = html.escape(titulo_original)
 
     preco = produto["_preco_numero"]
     desconto = produto["_desconto_numero"]
 
-    link_original = str(
-        produto.get("link_afiliado") or ""
-    ).strip()
+    link_original = str(produto.get("link_afiliado") or "").strip()
+
+    if not link_original.startswith("https://"):
+        return False
 
     link = html.escape(link_original, quote=True)
-
     foto = str(produto.get("foto") or "").strip()
 
     if len(titulo) > 400:
         titulo = titulo[:397] + "..."
 
-    preco_formatado = formatar_reais(preco)
-
     preco_original = None
 
-    if 0 < desconto < 100 and preco > 0:
+    if 0 < desconto < 100:
         preco_original = preco / (1 - desconto / 100)
 
     if preco_original and preco_original > preco:
         linha_preco = (
             f"💸 <s>De: {formatar_reais(preco_original)}</s>\n"
-            f"🔥 <b>Por: {preco_formatado}</b>\n"
+            f"🔥 <b>Por: {formatar_reais(preco)}</b>\n"
         )
     else:
-        linha_preco = (
-            f"🔥 <b>Preço: {preco_formatado}</b>\n"
-        )
+        linha_preco = f"🔥 <b>Preço: {formatar_reais(preco)}</b>\n"
 
     mensagem = (
         "🔥 <b>OFERTA ENCONTRADA!</b>\n\n"
@@ -712,9 +689,7 @@ def enviar_telegram(produto, categoria):
         "Confira o valor atual no anúncio.</i>"
     )
 
-    base_url = (
-        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-    )
+    base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
     try:
         if foto.startswith("https://"):
@@ -744,204 +719,110 @@ def enviar_telegram(produto, categoria):
         dados = resposta.json()
 
         if not dados.get("ok"):
-            logging.error(
-                "Telegram recusou publicação: %s",
-                dados.get("description"),
-            )
+            logging.error("Telegram: %s", dados.get("description"))
             return False
 
-        logging.info(
-            "Oferta publicada em %s: %s",
-            categoria,
-            titulo_original,
-        )
-
+        logging.info("Shopee publicada em %s: %s", categoria, titulo_original)
         return True
 
     except Exception:
-        logging.exception("Falha ao publicar no Telegram.")
+        logging.exception("Falha ao publicar oferta Shopee.")
         return False
 
 
 # ==================================================
-# CICLO PRINCIPAL
+# EXECUÇÃO EXCLUSIVA DO /sh
 # ==================================================
 
-def executar_ciclo(horario_slot):
-    estado = carregar_estado()
-
-    chave_slot = f"{data_local()}|{horario_slot}"
+def executar_sh():
+    if not EXECUCAO_LOCK.acquire(blocking=False):
+        logging.warning("Já existe uma execução em andamento.")
+        return False, "Já existe uma execução em andamento."
 
     try:
+        estado = carregar_estado()
+
+        # Importa o histórico local e consulta o histórico permanente.
         importar_historico_local(estado)
-        ids_publicados, titulos_publicados = (
-            carregar_historico_supabase()
-        )
+        ids_publicados, titulos_publicados = carregar_historico_supabase()
 
-    except Exception:
-        logging.exception(
-            "Ciclo cancelado por falha no Supabase."
-        )
-        return
+        vistos = set(estado.get("vistos", []))
 
-    publicados = publicacoes_hoje(estado)
-    restantes = MAX_POSTS_DIA - len(publicados)
+        # Pesquisa todas as categorias antes de selecionar.
+        candidatos = buscar_candidatos()
 
-    if restantes <= 0:
-        logging.info("Limite diário atingido.")
+        total_enviados = 0
 
-        estado.setdefault(
-            "execucoes_agendadas", {}
-        )[chave_slot] = "limite_diario"
+        for produto in candidatos:
+            if total_enviados >= MAX_OFERTAS_SH:
+                break
 
-        salvar_estado(estado)
-        return
+            categoria = produto["_categoria"]
+            chave = str(produto["_chave"])
+            titulo = produto.get("titulo", "")
+            titulo_normalizado = normalizar_titulo(titulo)
 
-    candidatos = buscar_candidatos()
+            if chave in vistos or chave in ids_publicados:
+                continue
 
-    vistos = set(estado.get("vistos", []))
+            if titulo_normalizado in titulos_publicados:
+                continue
 
-    contagem_categoria_slot = {}
-
-    for publicacao in publicados:
-        if publicacao.get("horario_slot") != horario_slot:
-            continue
-
-        categoria = publicacao.get("categoria")
-
-        contagem_categoria_slot[categoria] = (
-            contagem_categoria_slot.get(categoria, 0) + 1
-        )
-
-    total_enviados = 0
-
-    for produto in candidatos:
-        if total_enviados >= restantes:
-            break
-
-        categoria = produto["_categoria"]
-        chave = str(produto["_chave"])
-        titulo = produto.get("titulo", "")
-
-        titulo_normalizado = normalizar_titulo(titulo)
-
-        if chave in vistos or chave in ids_publicados:
-            continue
-
-        if (
-            titulo_normalizado
-            and titulo_normalizado in titulos_publicados
-        ):
-            continue
-
-        if (
-            contagem_categoria_slot.get(categoria, 0)
-            >= MAX_POR_CATEGORIA
-        ):
-            continue
-
-        try:
+            # Reserva no banco antes de publicar para reduzir
+            # o risco de duplicidade em reinicializações.
             reservada = reservar_no_supabase(
                 chave,
                 titulo,
                 origem="shopee",
             )
 
-        except Exception:
-            logging.exception(
-                "Falha ao reservar oferta no Supabase."
-            )
-            return
+            if not reservada:
+                continue
 
-        if not reservada:
-            logging.info(
-                "Oferta ignorada por possível duplicidade: %s",
-                titulo,
-            )
-            continue
+            if enviar_telegram(produto, categoria):
+                registrar_publicacao(
+                    estado=estado,
+                    chave=chave,
+                    titulo=titulo,
+                    categoria=categoria,
+                    preco=produto["_preco_numero"],
+                    origem="shopee",
+                    desconto=produto["_desconto_numero"],
+                )
 
-        # A reserva é mantida mesmo se o envio falhar.
-        # Isso evita uma possível publicação duplicada
-        # quando o Telegram recebe a mensagem, mas a resposta
-        # não chega ao robô.
+                vistos.add(chave)
+                ids_publicados.add(chave)
 
-        if enviar_telegram(produto, categoria):
-            registrar_publicacao(
-                estado=estado,
-                chave=chave,
-                titulo=titulo,
-                categoria=categoria,
-                preco=produto["_preco_numero"],
-                origem="shopee",
-                horario_slot=horario_slot,
-                desconto=produto["_desconto_numero"],
-            )
+                if titulo_normalizado:
+                    titulos_publicados.add(titulo_normalizado)
 
-            contagem_categoria_slot[categoria] = (
-                contagem_categoria_slot.get(categoria, 0) + 1
-            )
+                total_enviados += 1
+                time.sleep(2)
 
-            total_enviados += 1
-            vistos.add(chave)
-            ids_publicados.add(chave)
+            else:
+                logging.warning(
+                    "Falha no envio. Reserva mantida: %s",
+                    titulo,
+                )
 
-            if titulo_normalizado:
-                titulos_publicados.add(titulo_normalizado)
-
-            time.sleep(3)
-
-        else:
-            logging.warning(
-                "Envio não confirmado. Reserva mantida: %s",
-                titulo,
-            )
-
-    estado.setdefault(
-        "execucoes_agendadas", {}
-    )[chave_slot] = "concluido"
-
-    execucoes = estado["execucoes_agendadas"]
-
-    if len(execucoes) > 60:
-        chaves_recentes = sorted(execucoes.keys())[-60:]
-
-        estado["execucoes_agendadas"] = {
-            chave: execucoes[chave]
-            for chave in chaves_recentes
-        }
-
-    salvar_estado(estado)
-
-    logging.info(
-        "Lote %s finalizado. Publicações realizadas: %s",
-        horario_slot,
-        total_enviados,
-    )
-
-
-def executar_ciclo_protegido(horario_slot):
-    if not EXECUCAO_LOCK.acquire(blocking=False):
-        logging.warning(
-            "Já existe uma publicação em andamento. "
-            "Ciclo %s ignorado.",
-            horario_slot,
+        mensagem = (
+            f"Busca concluída. Ofertas publicadas: "
+            f"{total_enviados}/{MAX_OFERTAS_SH}."
         )
-        return False
 
-    try:
-        executar_ciclo(horario_slot)
-        return True
+        logging.info(mensagem)
+        return True, mensagem
 
-    except Exception:
-        logging.exception("Erro inesperado no ciclo.")
-        return False
+    except Exception as erro:
+        logging.exception("Erro na execução Shopee.")
+        return False, f"Erro na execução: {erro}"
 
     finally:
         EXECUCAO_LOCK.release()
 
 
 # ==================================================
-# CADASTRO MANUAL DE OFERTAS DO MERCADO LIVRE
+# TELEGRAM - RESPOSTAS
 # ==================================================
 
 def responder_usuario(chat_id, texto):
@@ -962,58 +843,52 @@ def responder_usuario(chat_id, texto):
         resposta.raise_for_status()
 
     except Exception:
-        logging.exception(
-            "Não foi possível responder ao usuário."
-        )
+        logging.exception("Erro ao responder usuário.")
 
 
-def identificar_link_mercado_livre(link):
+# ==================================================
+# CADASTRO MANUAL MULTIMARKETPLACE
+# ==================================================
+
+def identificar_marketplace(link, marketplace_id):
     try:
         parsed = urlparse(link)
         host = (parsed.hostname or "").lower()
 
-        dominios_validos = (
-            "mercadolivre.com.br",
-            "mercadolivre.com",
-            "mercadolibre.com",
-            "meli.la",
-        )
-
         if parsed.scheme != "https":
             return False
 
+        config = MARKETPLACES.get(str(marketplace_id))
+
+        if not config:
+            return False
+
         return any(
-            host == dominio
-            or host.endswith("." + dominio)
-            for dominio in dominios_validos
+            host == dominio or host.endswith("." + dominio)
+            for dominio in config["dominios"]
         )
 
     except Exception:
         return False
 
 
-def enviar_oferta_ml(produto, categoria):
+def enviar_oferta_manual(produto, categoria):
     canal = CANAIS.get(categoria)
 
     if not TELEGRAM_TOKEN or not canal:
-        logging.error(
-            "Canal não configurado para %s.",
-            categoria,
-        )
+        logging.error("Canal não configurado: %s", categoria)
         return False
 
     titulo = html.escape(produto["titulo"])
-    link = html.escape(
-        produto["link_afiliado"],
-        quote=True,
-    )
+    link = html.escape(produto["link_afiliado"], quote=True)
 
     preco_atual = produto["preco_atual"]
     preco_anterior = produto["preco_anterior"]
+    marketplace = produto["marketplace_nome"]
 
     linhas_preco = []
 
-    if preco_anterior and preco_anterior > preco_atual:
+    if preco_anterior > preco_atual:
         linhas_preco.append(
             f"💸 <s>De: {formatar_reais(preco_anterior)}</s>"
         )
@@ -1024,13 +899,13 @@ def enviar_oferta_ml(produto, categoria):
 
     desconto = 0
 
-    if preco_anterior and preco_anterior > preco_atual:
+    if preco_anterior > preco_atual:
         desconto = round(
             (1 - preco_atual / preco_anterior) * 100
         )
 
     mensagem = (
-        "🔥 <b>OFERTA DO MERCADO LIVRE!</b>\n\n"
+        f"🔥 <b>OFERTA {html.escape(marketplace.upper())}!</b>\n\n"
         f"📦 <b>{titulo}</b>\n\n"
         + "\n".join(linhas_preco)
         + (
@@ -1055,81 +930,75 @@ def enviar_oferta_ml(produto, categoria):
         )
 
         resposta.raise_for_status()
-
         dados = resposta.json()
 
         if not dados.get("ok"):
-            logging.error(
-                "Telegram recusou oferta do Mercado Livre: %s",
-                dados.get("description"),
-            )
+            logging.error("Telegram: %s", dados.get("description"))
             return False
 
         logging.info(
-            "Oferta do Mercado Livre publicada: %s",
+            "Oferta manual publicada: %s | %s",
+            marketplace,
             produto["titulo"],
         )
 
         return True
 
     except Exception:
-        logging.exception(
-            "Falha ao publicar oferta do Mercado Livre."
-        )
+        logging.exception("Erro ao publicar oferta manual.")
         return False
 
 
 def iniciar_cadastro_ml(chat_id, user_id):
     SESSOES_ML[str(user_id)] = {
         "chat_id": chat_id,
-        "etapa": "link",
+        "etapa": "marketplace",
     }
 
     responder_usuario(
         chat_id,
-        "Vamos cadastrar sua oferta!\n\n"
-        "1/5 — Envie o link de afiliado do Mercado Livre.\n"
-        "Digite /cancelar para sair.",
+        "🛒 CADASTRO MANUAL DE OFERTA\n\n"
+        "Escolha o marketplace:\n\n"
+        "1 — Mercado Livre\n"
+        "2 — Magalu\n"
+        "3 — Amazon\n"
+        "4 — TikTok Shop\n"
+        "5 — AliExpress\n\n"
+        "Digite o número da opção.\n"
+        "Para sair, envie /cancelar."
     )
 
 
-def finalizar_cadastro_ml(chat_id, user_id, sessao, categoria):
+def finalizar_cadastro_manual(chat_id, user_id, sessao, categoria):
     if not EXECUCAO_LOCK.acquire(blocking=False):
         responder_usuario(
             chat_id,
-            "Já existe uma publicação em andamento. "
-            "Aguarde alguns instantes e tente novamente.",
+            "Já existe uma publicação em andamento. Aguarde."
         )
         return
 
     try:
         estado = carregar_estado()
 
-        permitido, motivo = pode_publicar(
-            estado,
-            categoria,
-        )
-
-        if not permitido:
-            responder_usuario(chat_id, motivo)
-            return
-
         produto = {
             "titulo": sessao["titulo"],
             "link_afiliado": sessao["link_afiliado"],
             "preco_atual": sessao["preco_atual"],
             "preco_anterior": sessao["preco_anterior"],
+            "marketplace_nome": sessao["marketplace_nome"],
         }
 
         if not CANAIS.get(categoria):
             responder_usuario(
                 chat_id,
-                f"O canal '{categoria}' não está configurado no Render.",
+                f"O canal {categoria} não está configurado no Render."
             )
             return
 
+        codigo = sessao["marketplace_codigo"]
+
         chave = (
-            "mercadolivre:"
+            codigo + ":"
             + hashlib.sha256(
                 sessao["link_afiliado"].encode("utf-8")
             ).hexdigest()[:32]
@@ -1138,73 +1007,62 @@ def finalizar_cadastro_ml(chat_id, user_id, sessao, categoria):
         try:
             ids, titulos = carregar_historico_supabase()
 
-            titulo_normalizado = normalizar_titulo(
-                produto["titulo"]
-            )
+            titulo_normalizado = normalizar_titulo(produto["titulo"])
 
             if (
                 chave in ids
-                or (
-                    titulo_normalizado
-                    and titulo_normalizado in titulos
-                )
+                or titulo_normalizado in titulos
             ):
                 responder_usuario(
                     chat_id,
-                    "Essa oferta ou um título equivalente já "
-                    "consta no histórico. Não publiquei para "
-                    "evitar duplicidade.",
+                    "Essa oferta ou um título equivalente já consta "
+                    "no histórico. Não publiquei para evitar duplicidade."
                 )
                 return
 
             reservada = reservar_no_supabase(
                 chave,
                 produto["titulo"],
-                origem="mercadolivre",
+                origem=codigo,
             )
 
             if not reservada:
                 responder_usuario(
                     chat_id,
-                    "O Supabase identificou possível duplicidade. "
-                    "A oferta não foi publicada.",
+                    "O Supabase identificou uma possível duplicidade. "
+                    "A oferta não foi publicada."
                 )
                 return
 
         except Exception:
-            logging.exception(
-                "Falha ao registrar oferta manual no Supabase."
-            )
+            logging.exception("Erro ao consultar Supabase.")
 
             responder_usuario(
                 chat_id,
                 "Não consegui consultar ou registrar o histórico "
-                "no Supabase. Não publiquei a oferta.",
+                "no Supabase. Não publiquei a oferta."
             )
             return
 
-        if enviar_oferta_ml(produto, categoria):
+        if enviar_oferta_manual(produto, categoria):
             registrar_publicacao(
                 estado=estado,
                 chave=chave,
                 titulo=produto["titulo"],
                 categoria=categoria,
                 preco=produto["preco_atual"],
-                origem="mercadolivre",
-                horario_slot="manual",
+                origem=codigo,
             )
 
             responder_usuario(
                 chat_id,
-                "✅ Oferta publicada e registrada no histórico!",
+                "✅ Oferta publicada e registrada no histórico!"
             )
-
         else:
             responder_usuario(
                 chat_id,
-                "O envio ao canal falhou. A reserva ficou no "
-                "histórico para evitar uma possível duplicação. "
-                "Confira os logs do Render.",
+                "⚠️ O envio falhou. A reserva ficou no histórico "
+                "para evitar uma possível duplicação. Confira os logs."
             )
 
     finally:
@@ -1212,7 +1070,152 @@ def finalizar_cadastro_ml(chat_id, user_id, sessao, categoria):
 
 
 # ==================================================
-# PROCESSAMENTO DAS MENSAGENS DO TELEGRAM
+# PROCESSAMENTO DO CADASTRO MANUAL
+# ==================================================
+
+def processar_etapa_manual(chat_id, user_id, texto, sessao):
+    etapa = sessao["etapa"]
+
+    if etapa == "marketplace":
+        opcao = texto.strip()
+
+        if opcao not in MARKETPLACES:
+            responder_usuario(
+                chat_id,
+                "Opção inválida. Escolha de 1 a 5."
+            )
+            return
+
+        config = MARKETPLACES[opcao]
+
+        sessao["marketplace_codigo"] = config["codigo"]
+        sessao["marketplace_nome"] = config["nome"]
+        sessao["marketplace_id"] = opcao
+        sessao["etapa"] = "link"
+
+        responder_usuario(
+            chat_id,
+            f"Marketplace escolhido: {config['nome']}.\n\n"
+            "1/5 — Envie agora o link de afiliado."
+        )
+
+    elif etapa == "link":
+        if not identificar_marketplace(
+            texto,
+            sessao["marketplace_id"],
+        ):
+            responder_usuario(
+                chat_id,
+                "O domínio do link não corresponde ao marketplace "
+                "escolhido ou o link não é HTTPS. Envie novamente."
+            )
+            return
+
+        sessao["link_afiliado"] = texto.strip()
+        sessao["etapa"] = "titulo"
+
+        responder_usuario(
+            chat_id,
+            "2/5 — Envie o título do produto."
+        )
+
+    elif etapa == "titulo":
+        if len(texto) < 3 or len(texto) > 180:
+            responder_usuario(
+                chat_id,
+                "O título deve ter entre 3 e 180 caracteres."
+            )
+            return
+
+        sessao["titulo"] = texto
+        sessao["etapa"] = "preco_atual"
+
+        responder_usuario(
+            chat_id,
+            "3/5 — Informe o preço atual.\nExemplo: 149,90"
+        )
+
+    elif etapa == "preco_atual":
+        valor = numero(texto)
+
+        if valor is None or valor <= 0:
+            responder_usuario(
+                chat_id,
+                "Preço inválido. Envie um valor positivo, "
+                "por exemplo: 149,90."
+            )
+            return
+
+        sessao["preco_atual"] = valor
+        sessao["etapa"] = "preco_anterior"
+
+        responder_usuario(
+            chat_id,
+            "4/5 — Informe o preço anterior.\n"
+            "Envie 0 se não houver preço anterior."
+        )
+
+    elif etapa == "preco_anterior":
+        valor = numero(texto)
+
+        if valor is None or valor < 0:
+            responder_usuario(
+                chat_id,
+                "Preço inválido. Envie um valor positivo ou 0."
+            )
+            return
+
+        if valor > 0 and valor <= sessao["preco_atual"]:
+            responder_usuario(
+                chat_id,
+                "O preço anterior precisa ser maior que o atual. "
+                "Envie novamente ou 0 se não houver."
+            )
+            return
+
+        sessao["preco_anterior"] = valor
+        sessao["etapa"] = "categoria"
+
+        responder_usuario(
+            chat_id,
+            "5/5 — Escolha o canal de publicação:\n\n"
+            "utilidades\n"
+            "ferramentas\n"
+            "eletronicos"
+        )
+
+    elif etapa == "categoria":
+        categoria = normalizar_titulo(texto)
+
+        aliases = {
+            "eletronico": "eletronicos",
+            "eletronicos": "eletronicos",
+            "utilidade": "utilidades",
+            "ferramenta": "ferramentas",
+        }
+
+        categoria = aliases.get(categoria, categoria)
+
+        if categoria not in CATEGORIAS_VALIDAS:
+            responder_usuario(
+                chat_id,
+                "Categoria inválida. Responda: utilidades, "
+                "ferramentas ou eletronicos."
+            )
+            return
+
+        finalizar_cadastro_manual(
+            chat_id,
+            user_id,
+            sessao,
+            categoria,
+        )
+
+        SESSOES_ML.pop(user_id, None)
+
+
+# ==================================================
+# COMANDOS TELEGRAM
 # ==================================================
 
 def processar_mensagem_telegram(mensagem):
@@ -1235,7 +1238,7 @@ def processar_mensagem_telegram(mensagem):
     if chat.get("type") == "private" and comando == "/id":
         responder_usuario(
             chat_id,
-            f"Seu ID do Telegram é: {user_id}",
+            f"Seu ID do Telegram é: {user_id}"
         )
         return
 
@@ -1243,197 +1246,102 @@ def processar_mensagem_telegram(mensagem):
         return
 
     if not TELEGRAM_ADMIN_ID or user_id != TELEGRAM_ADMIN_ID:
-        if comando in ("/ml", "/start", "/ajuda"):
+        if comando in (
+            "/sh", "/ml", "/start", "/ajuda",
+            "/cancelar"
+        ):
             responder_usuario(
                 chat_id,
-                "Acesso restrito ao administrador do robô.",
+                "Acesso restrito ao administrador do robô."
             )
         return
 
     if comando == "/cancelar":
         SESSOES_ML.pop(user_id, None)
+        responder_usuario(chat_id, "Cadastro cancelado.")
+        return
+
+    if comando == "/start":
+        responder_usuario(
+            chat_id,
+            "🤖 ROBÔ DE OFERTAS\n\n"
+            "Comandos disponíveis:\n\n"
+            "/sh — Buscar ofertas na Shopee\n"
+            "/ml — Cadastrar oferta manual\n"
+            "/ajuda — Ver comandos\n"
+            "/id — Consultar seu ID\n"
+            "/cancelar — Cancelar cadastro\n\n"
+            "A busca da Shopee só acontece quando você envia /sh."
+        )
+        return
+
+    if comando == "/ajuda":
+        responder_usuario(
+            chat_id,
+            "📌 COMANDOS DO ROBÔ\n\n"
+            "/sh — Pesquisa Shopee e publica até 2 ofertas no total.\n"
+            "/ml — Cadastro manual em 5 marketplaces.\n"
+            "/cancelar — Cancela o cadastro atual.\n"
+            "/id — Mostra seu ID do Telegram.\n"
+            "/start — Mostra este menu.\n\n"
+            "Não existem publicações automáticas agendadas."
+        )
+        return
+
+    if comando == "/sh":
+        if SESSOES_ML.get(user_id):
+            responder_usuario(
+                chat_id,
+                "Você tem um cadastro manual em andamento. "
+                "Envie /cancelar antes de iniciar o /sh."
+            )
+            return
+
+        if EXECUCAO_LOCK.locked():
+            responder_usuario(
+                chat_id,
+                "Já existe uma execução em andamento."
+            )
+            return
 
         responder_usuario(
             chat_id,
-            "Cadastro cancelado.",
+            "🔎 Iniciando busca Shopee.\n"
+            "Vou pesquisar as três categorias e selecionar "
+            "até duas ofertas no total."
         )
+
+        def executar_em_background():
+            sucesso, mensagem_final = executar_sh()
+            responder_usuario(
+                chat_id,
+                ("✅ " if sucesso else "⚠️ ") + mensagem_final
+            )
+
+        threading.Thread(
+            target=executar_em_background,
+            daemon=True,
+        ).start()
+
         return
 
     if comando == "/ml":
         iniciar_cadastro_ml(chat_id, user_id)
         return
 
-    if comando == "/start":
-        if EXECUCAO_LOCK.locked():
-            responder_usuario(
-                chat_id,
-                "Já existe uma execução em andamento. Aguarde.",
-            )
-            return
-
-        responder_usuario(
-            chat_id,
-            "🚀 Iniciando busca manual de ofertas da Shopee.\n"
-            "Você receberá as ofertas nos canais configurados.",
-        )
-
-        def executar_manual():
-            resultado = executar_ciclo_protegido("manual")
-
-            if resultado:
-                responder_usuario(
-                    chat_id,
-                    "✅ Busca manual finalizada. "
-                    "Confira os canais e os logs do Render.",
-                )
-            else:
-                responder_usuario(
-                    chat_id,
-                    "⚠️ Não foi possível iniciar ou concluir "
-                    "a busca. Confira os logs do Render.",
-                )
-
-        threading.Thread(
-            target=executar_manual,
-            daemon=True,
-        ).start()
-
-        return
-
-    if comando == "/ajuda":
-        responder_usuario(
-            chat_id,
-            "Comandos disponíveis:\n\n"
-            "/start — iniciar busca manual da Shopee\n"
-            "/ml — cadastrar oferta manual do Mercado Livre\n"
-            "/cancelar — cancelar cadastro\n"
-            "/id — consultar seu ID do Telegram",
-        )
-        return
-
     sessao = SESSOES_ML.get(user_id)
 
-    if not sessao:
-        return
-
-    etapa = sessao["etapa"]
-
-    if etapa == "link":
-        if not identificar_link_mercado_livre(texto):
-            responder_usuario(
-                chat_id,
-                "Esse link não parece ser do Mercado Livre. "
-                "Envie um link HTTPS válido da plataforma.",
-            )
-            return
-
-        sessao["link_afiliado"] = texto
-        sessao["etapa"] = "titulo"
-
-        responder_usuario(
-            chat_id,
-            "2/5 — Envie o nome do produto.",
-        )
-
-    elif etapa == "titulo":
-        if len(texto) < 3 or len(texto) > 180:
-            responder_usuario(
-                chat_id,
-                "Envie um título entre 3 e 180 caracteres.",
-            )
-            return
-
-        sessao["titulo"] = texto
-        sessao["etapa"] = "preco_atual"
-
-        responder_usuario(
-            chat_id,
-            "3/5 — Qual é o preço atual?\n"
-            "Exemplo: 149,90",
-        )
-
-    elif etapa == "preco_atual":
-        valor = numero(texto)
-
-        if valor is None or valor <= 0:
-            responder_usuario(
-                chat_id,
-                "Preço inválido. Envie um valor positivo, "
-                "por exemplo: 149,90.",
-            )
-            return
-
-        sessao["preco_atual"] = valor
-        sessao["etapa"] = "preco_anterior"
-
-        responder_usuario(
-            chat_id,
-            "4/5 — Qual era o preço anterior?\n"
-            "Envie 0 se não houver preço anterior.",
-        )
-
-    elif etapa == "preco_anterior":
-        valor = numero(texto)
-
-        if valor is None or valor < 0:
-            responder_usuario(
-                chat_id,
-                "Preço inválido. Envie um valor positivo ou 0.",
-            )
-            return
-
-        if valor > 0 and valor <= sessao["preco_atual"]:
-            responder_usuario(
-                chat_id,
-                "O preço anterior precisa ser maior que o atual. "
-                "Envie novamente ou 0 se não houver.",
-            )
-            return
-
-        sessao["preco_anterior"] = valor
-        sessao["etapa"] = "categoria"
-
-        responder_usuario(
-            chat_id,
-            "5/5 — Em qual canal devo publicar?\n\n"
-            "Responda com uma opção:\n"
-            "utilidades\n"
-            "ferramentas\n"
-            "eletronicos",
-        )
-
-    elif etapa == "categoria":
-        categoria = normalizar_titulo(texto)
-
-        aliases = {
-            "eletronico": "eletronicos",
-            "eletronicos": "eletronicos",
-            "utilidade": "utilidades",
-            "ferramenta": "ferramentas",
-        }
-
-        categoria = aliases.get(categoria, categoria)
-
-        if categoria not in CATEGORIAS_VALIDAS:
-            responder_usuario(
-                chat_id,
-                "Opção inválida. Responda:\n"
-                "utilidades, ferramentas ou eletronicos.",
-            )
-            return
-
-        finalizar_cadastro_ml(
+    if sessao:
+        processar_etapa_manual(
             chat_id,
             user_id,
+            texto,
             sessao,
-            categoria,
         )
-
-        SESSOES_ML.pop(user_id, None)
 
 
 # ==================================================
-# WEBHOOK DO TELEGRAM
+# WEBHOOK
 # ==================================================
 
 def segredo_webhook():
@@ -1447,20 +1355,13 @@ def segredo_webhook():
 
 def configurar_webhook():
     if not TELEGRAM_TOKEN:
-        logging.error(
-            "Webhook não configurado: TELEGRAM_TOKEN ausente."
-        )
+        logging.error("TELEGRAM_TOKEN ausente.")
         return
 
-    host = os.getenv(
-        "RENDER_EXTERNAL_URL",
-        "",
-    ).strip().rstrip("/")
+    host = os.getenv("RENDER_EXTERNAL_URL", "").strip().rstrip("/")
 
     if not host:
-        logging.error(
-            "RENDER_EXTERNAL_URL ausente no Render."
-        )
+        logging.error("RENDER_EXTERNAL_URL ausente.")
         return
 
     url = f"{host}/telegram/webhook"
@@ -1478,45 +1379,33 @@ def configurar_webhook():
         )
 
         resposta.raise_for_status()
-
         dados = resposta.json()
 
         if dados.get("ok"):
-            logging.info(
-                "Webhook configurado: %s",
-                url,
-            )
+            logging.info("Webhook configurado: %s", url)
         else:
             logging.error(
-                "Telegram recusou configurar webhook: %s",
+                "Telegram recusou webhook: %s",
                 dados.get("description"),
             )
 
     except Exception:
-        logging.exception(
-            "Erro ao configurar webhook."
-        )
+        logging.exception("Erro ao configurar webhook.")
 
 
 # ==================================================
-# SERVIDOR HTTP / MONITORAMENTO RENDER
+# SERVIDOR HTTP
 # ==================================================
 
 class HealthHandler(BaseHTTPRequestHandler):
 
     def responder(self, status, corpo=b"ok"):
         self.send_response(status)
-
         self.send_header(
             "Content-Type",
             "text/plain; charset=utf-8",
         )
-
-        self.send_header(
-            "Content-Length",
-            str(len(corpo)),
-        )
-
+        self.send_header("Content-Length", str(len(corpo)))
         self.end_headers()
         self.wfile.write(corpo)
 
@@ -1524,22 +1413,13 @@ class HealthHandler(BaseHTTPRequestHandler):
         caminho = urlparse(self.path)
 
         if caminho.path == "/":
-            self.responder(
-                200,
-                b"Robo de ofertas ativo",
-            )
+            self.responder(200, b"Robo de ofertas ativo")
         else:
-            self.responder(
-                404,
-                b"Rota nao encontrada",
-            )
+            self.responder(404, b"Rota nao encontrada")
 
     def do_POST(self):
         if urlparse(self.path).path != "/telegram/webhook":
-            self.responder(
-                404,
-                b"Rota nao encontrada",
-            )
+            self.responder(404, b"Rota nao encontrada")
             return
 
         recebido = self.headers.get(
@@ -1551,157 +1431,51 @@ class HealthHandler(BaseHTTPRequestHandler):
             recebido,
             segredo_webhook(),
         ):
-            self.responder(
-                403,
-                b"forbidden",
-            )
+            self.responder(403, b"forbidden")
             return
 
         try:
-            tamanho = int(
-                self.headers.get("Content-Length", "0")
-            )
+            tamanho = int(self.headers.get("Content-Length", "0"))
 
             if tamanho <= 0 or tamanho > 1024 * 1024:
-                self.responder(
-                    400,
-                    b"invalid body",
-                )
+                self.responder(400, b"invalid body")
                 return
 
             corpo = self.rfile.read(tamanho)
+            update = json.loads(corpo.decode("utf-8"))
 
-            update = json.loads(
-                corpo.decode("utf-8")
-            )
+            # Responde imediatamente ao Telegram.
+            self.responder(200, b"ok")
 
-            processar_mensagem_telegram(
-                update.get("message")
-            )
-
-            self.responder(
-                200,
-                b"ok",
-            )
+            # Processa a mensagem fora da requisição HTTP.
+            threading.Thread(
+                target=processar_mensagem_telegram,
+                args=(update.get("message"),),
+                daemon=True,
+            ).start()
 
         except Exception:
-            logging.exception(
-                "Falha ao processar webhook."
-            )
+            logging.exception("Falha no webhook.")
 
-            self.responder(
-                500,
-                b"error",
-            )
+            try:
+                self.responder(500, b"error")
+            except Exception:
+                pass
 
     def log_message(self, formato, *args):
         return
 
 
 def run_web_server():
-    porta = int(
-        os.environ.get("PORT", "10000")
-    )
+    porta = int(os.environ.get("PORT", "10000"))
 
-    servidor = HTTPServer(
+    servidor = ThreadingHTTPServer(
         ("0.0.0.0", porta),
         HealthHandler,
     )
 
-    logging.info(
-        "Servidor HTTP iniciado na porta %s.",
-        porta,
-    )
-
+    logging.info("Servidor HTTP iniciado na porta %s.", porta)
     servidor.serve_forever()
-
-
-# ==================================================
-# AGENDADOR
-# ==================================================
-
-def iniciar_robo():
-    logging.info(
-        "Robô iniciado. Horários: "
-        "06:30, 11:00 e 19:00 (Brasília)."
-    )
-
-    while True:
-        try:
-            agora = agora_local()
-            estado = carregar_estado()
-
-            execucoes = estado.setdefault(
-                "execucoes_agendadas",
-                {},
-            )
-
-            hoje = agora.date().isoformat()
-            horarios_devidos = []
-
-            for hora, minuto in HORARIOS_PUBLICACAO:
-                horario_slot = f"{hora:02d}:{minuto:02d}"
-
-                chave_slot = (
-                    f"{hoje}|{horario_slot}"
-                )
-
-                instante_slot = agora.replace(
-                    hour=hora,
-                    minute=minuto,
-                    second=0,
-                    microsecond=0,
-                )
-
-                if (
-                    agora >= instante_slot
-                    and chave_slot not in execucoes
-                ):
-                    horarios_devidos.append(
-                        (
-                            instante_slot,
-                            horario_slot,
-                            chave_slot,
-                        )
-                    )
-
-            if horarios_devidos:
-                horarios_devidos.sort(
-                    key=lambda item: item[0]
-                )
-
-                # Se o serviço ficou desligado por vários
-                # horários, ignora os antigos e executa
-                # somente o lote mais recente.
-
-                for _, horario_antigo, chave_antiga in (
-                    horarios_devidos[:-1]
-                ):
-                    execucoes[chave_antiga] = (
-                        "ignorado_atraso"
-                    )
-
-                if len(horarios_devidos) > 1:
-                    salvar_estado(estado)
-
-                _, horario_slot, _ = horarios_devidos[-1]
-
-                executou = executar_ciclo_protegido(
-                    horario_slot
-                )
-
-                if not executou:
-                    time.sleep(INTERVALO_VERIFICACAO)
-
-            else:
-                time.sleep(INTERVALO_VERIFICACAO)
-
-        except Exception:
-            logging.exception(
-                "Erro inesperado no agendador."
-            )
-
-            time.sleep(INTERVALO_VERIFICACAO)
 
 
 # ==================================================
@@ -1711,14 +1485,10 @@ def iniciar_robo():
 if __name__ == "__main__":
 
     if not TELEGRAM_TOKEN:
-        logging.error(
-            "A variável TELEGRAM_TOKEN não está configurada."
-        )
+        logging.error("TELEGRAM_TOKEN não configurado.")
 
     if not TELEGRAM_ADMIN_ID:
-        logging.warning(
-            "TELEGRAM_ADMIN_ID não configurado."
-        )
+        logging.warning("TELEGRAM_ADMIN_ID não configurado.")
 
     threading.Thread(
         target=run_web_server,
@@ -1729,4 +1499,11 @@ if __name__ == "__main__":
 
     configurar_webhook()
 
-    iniciar_robo()
+    logging.info(
+        "Robô iniciado. Sem agendamentos automáticos. "
+        "Shopee somente por /sh."
+    )
+
+    # Mantém o processo ativo no Render.
+    while True:
+        time.sleep(60)
