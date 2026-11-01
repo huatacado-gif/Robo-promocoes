@@ -129,7 +129,7 @@ CATEGORIAS = {
         ],
     },
 
-    "ferramentas" = {
+    "ferramentas": {
     "nome": "Ferramentas",
     "desconto_minimo": 30,
     "termos": [
