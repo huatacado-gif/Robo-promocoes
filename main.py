@@ -130,28 +130,54 @@ CATEGORIAS = {
         ],
     },
 
-    "ferramentas": {
-        "nome": "Ferramentas",
-        "desconto_minimo": 30,
-        "termos": [
-            "parafusadeira",
-            "furadeira",
-            "kit ferramentas",
-            "jogo de chaves",
-            "maleta de ferramentas",
-            "chave de impacto",
-            "ferramentas eletricas",
-            "esmerilhadeira",
-            "maquina de solda",
-            "multimetro digital",
-            "trena digital",
-            "kit brocas",
-            "kit bits para parafusadeira",
-            "acessorios para ferramentas",
-            "jogo de soquetes",
-        ],
-    },
+    CATEGORIAS["ferramentas"] = {
+    "nome": "Ferramentas",
+    "desconto_minimo": 30,
+    "termos": [
+        # Instrumentais odontológicos
+        "kit instrumental odontologico",
+        "espelho clinico odontologico",
+        "sonda exploradora odontologica",
+        "pinça clinica odontologica",
+        "cureta periodontal",
+        "alavanca odontologica",
+        "forceps odontologico",
+        "espatula odontologica",
 
+        # Materiais odontológicos
+        "resina composta odontologica",
+        "adesivo odontologico",
+        "acido fosforico odontologico",
+        "cimento odontologico",
+        "ionomero de vidro odontologico",
+        "material de moldagem odontologico",
+        "brocas odontologicas",
+        "discos de polimento odontologico",
+        "tiras de lixa odontologica",
+
+        # Equipamentos
+        "fotopolimerizador odontologico",
+        "ultrassom odontologico",
+        "micromotor odontologico",
+        "contra angulo odontologico",
+        "caneta de alta rotacao odontologica",
+        "sugador odontologico",
+
+        # Produtos para estudantes
+        "manequim odontologico",
+        "typodont odontologico",
+        "dentes para treinamento odontologico",
+        "modelo anatomico odontologico",
+        "kit estudante odontologia",
+        "material laboratorio odontologico",
+
+        # Biossegurança e acessórios
+        "oculos de protecao odontologico",
+        "mascara descartavel odontologica",
+        "avental odontologico",
+        "organizador instrumental odontologico"
+    ]
+}
     "eletronicos": {
         "nome": "Eletrônicos e acessórios para celular",
         "desconto_minimo": 30,
