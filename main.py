@@ -101,6 +101,15 @@ MARKETPLACES = {
             "a.aliexpress.com",
         ),
     },
+    "6": {
+        "nome": "Shopee",
+        "codigo": "shopee",
+        "dominios": (
+            "shopee.com.br",
+            "shopee.com",
+            "shope.ee",
+        ),
+    },
 }
 
 
@@ -995,7 +1004,8 @@ def iniciar_cadastro_ml(chat_id, user_id):
         "2 — Magalu\n"
         "3 — Amazon\n"
         "4 — TikTok Shop\n"
-        "5 — AliExpress\n\n"
+        "5 — AliExpress\n"
+        "6 — Shopee\n\n"
         "Digite o número da opção.\n"
         "Para sair, envie /cancelar."
     )
@@ -1114,7 +1124,7 @@ def processar_etapa_manual(chat_id, user_id, texto, sessao):
         if opcao not in MARKETPLACES:
             responder_usuario(
                 chat_id,
-                "Opção inválida. Escolha de 1 a 5."
+                "Opção inválida. Escolha de 1 a 6."
             )
             return
 
@@ -1310,7 +1320,7 @@ def processar_mensagem_telegram(mensagem):
             chat_id,
             "📌 COMANDOS DO ROBÔ\n\n"
             "/sh — Escolhe categorias e pesquisa Shopee (até 2 ofertas).\n"
-            "/ml — Cadastro manual em 5 marketplaces.\n"
+            "/ml — Cadastro manual em 6 marketplaces.\n"
             "/cancelar — Cancela o cadastro atual.\n"
             "/id — Mostra seu ID do Telegram.\n"
             "/start — Mostra este menu.\n\n"
