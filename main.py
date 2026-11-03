@@ -44,6 +44,7 @@ ARQUIVO_ESTADO = Path("estado_robo.json")
 
 EXECUCAO_LOCK = threading.Lock()
 SESSOES_ML = {}
+SESSOES_SH = {}
 CATEGORIAS_VALIDAS = ("utilidades", "ferramentas", "eletronicos")
 
 logging.basicConfig(
@@ -540,7 +541,7 @@ def validar_produto(produto, categoria):
 # BUSCA SHOPEE
 # ==================================================
 
-def buscar_candidatos():
+def buscar_candidatos(categorias_selecionadas=None):
     candidatos = []
     ids_desta_busca = set()
 
@@ -594,7 +595,10 @@ def buscar_candidatos():
     # Cada termo é pesquisado independentemente.
     # Assim, nenhuma categoria fica limitada a uma busca geral.
 
-    for categoria, config in CATEGORIAS.items():
+    categorias_busca = categorias_selecionadas or list(CATEGORIAS.keys())
+
+    for categoria in categorias_busca:
+        config = CATEGORIAS[categoria]
         for termo in config["termos"]:
             try:
                 produtos = buscar_ofertas(termo) or []
@@ -760,7 +764,7 @@ def enviar_telegram(produto, categoria):
 # EXECUÇÃO EXCLUSIVA DO /sh
 # ==================================================
 
-def executar_sh():
+def executar_sh(categorias_selecionadas=None):
     if not EXECUCAO_LOCK.acquire(blocking=False):
         logging.warning("Já existe uma execução em andamento.")
         return False, "Já existe uma execução em andamento."
@@ -774,8 +778,9 @@ def executar_sh():
 
         vistos = set(estado.get("vistos", []))
 
-        # Pesquisa todas as categorias antes de selecionar.
-        candidatos = buscar_candidatos()
+        # Pesquisa somente as categorias escolhidas no menu.
+        categorias_selecionadas = categorias_selecionadas or list(CATEGORIAS.keys())
+        candidatos = buscar_candidatos(categorias_selecionadas)
 
         total_enviados = 0
 
@@ -831,8 +836,9 @@ def executar_sh():
                     titulo,
                 )
 
+        nomes_categorias = ", ".join(CATEGORIAS[c]["nome"] for c in categorias_selecionadas)
         mensagem = (
-            f"Busca concluída. Ofertas publicadas: "
+            f"Busca concluída ({nomes_categorias}). Ofertas publicadas: "
             f"{total_enviados}/{MAX_OFERTAS_SH}."
         )
 
@@ -1205,28 +1211,25 @@ def processar_etapa_manual(chat_id, user_id, texto, sessao):
         responder_usuario(
             chat_id,
             "5/5 — Escolha o canal de publicação:\n\n"
-            "utilidades\n"
-            "ferramentas\n"
-            "eletronicos"
+            "1 — Utilidades\n"
+            "2 — Ferramentas\n"
+            "3 — Eletrônicos\n\n"
+            "Digite o número de 1 a 3."
         )
 
     elif etapa == "categoria":
-        categoria = normalizar_titulo(texto)
-
-        aliases = {
-            "eletronico": "eletronicos",
-            "eletronicos": "eletronicos",
-            "utilidade": "utilidades",
-            "ferramenta": "ferramentas",
+        opcoes_categoria = {
+            "1": "utilidades",
+            "2": "ferramentas",
+            "3": "eletronicos",
         }
-
-        categoria = aliases.get(categoria, categoria)
+        categoria = opcoes_categoria.get(texto.strip())
 
         if categoria not in CATEGORIAS_VALIDAS:
             responder_usuario(
                 chat_id,
-                "Categoria inválida. Responda: utilidades, "
-                "ferramentas ou eletronicos."
+                "Opção inválida. Escolha 1 (Utilidades), "
+                "2 (Ferramentas) ou 3 (Eletrônicos)."
             )
             return
 
@@ -1284,6 +1287,7 @@ def processar_mensagem_telegram(mensagem):
 
     if comando == "/cancelar":
         SESSOES_ML.pop(user_id, None)
+        SESSOES_SH.pop(user_id, None)
         responder_usuario(chat_id, "Cadastro cancelado.")
         return
 
@@ -1297,7 +1301,7 @@ def processar_mensagem_telegram(mensagem):
             "/ajuda — Ver comandos\n"
             "/id — Consultar seu ID\n"
             "/cancelar — Cancelar cadastro\n\n"
-            "A busca da Shopee só acontece quando você envia /sh."
+            "A busca da Shopee só acontece quando você envia /sh e escolhe as categorias."
         )
         return
 
@@ -1305,7 +1309,7 @@ def processar_mensagem_telegram(mensagem):
         responder_usuario(
             chat_id,
             "📌 COMANDOS DO ROBÔ\n\n"
-            "/sh — Pesquisa Shopee e publica até 2 ofertas no total.\n"
+            "/sh — Escolhe categorias e pesquisa Shopee (até 2 ofertas).\n"
             "/ml — Cadastro manual em 5 marketplaces.\n"
             "/cancelar — Cancela o cadastro atual.\n"
             "/id — Mostra seu ID do Telegram.\n"
@@ -1330,15 +1334,61 @@ def processar_mensagem_telegram(mensagem):
             )
             return
 
+        SESSOES_SH[user_id] = {"chat_id": chat_id}
+
         responder_usuario(
             chat_id,
-            "🔎 Iniciando busca Shopee.\n"
-            "Vou pesquisar as três categorias e selecionar "
-            "até duas ofertas no total."
+            "🔎 BUSCA SHOPEE — ESCOLHA AS CATEGORIAS\n\n"
+            "1 — Utilidades\n"
+            "2 — Ferramentas\n"
+            "3 — Eletrônicos\n"
+            "4 — Todas as categorias\n"
+            "0 — Cancelar\n\n"
+            "Você pode escolher mais de uma: exemplo 1,3."
+        )
+        return
+
+    if comando == "/ml":
+        iniciar_cadastro_ml(chat_id, user_id)
+        return
+
+    sessao_sh = SESSOES_SH.get(user_id)
+    if sessao_sh:
+        escolha = texto.strip().lower().replace(" ", "")
+        if escolha in ("0", "cancelar"):
+            SESSOES_SH.pop(user_id, None)
+            responder_usuario(chat_id, "Busca Shopee cancelada.")
+            return
+
+        if escolha == "4":
+            categorias_escolhidas = list(CATEGORIAS.keys())
+        else:
+            mapa_opcoes = {
+                "1": "utilidades",
+                "2": "ferramentas",
+                "3": "eletronicos",
+            }
+            partes = re.split(r"[,;+]", escolha)
+            if not partes or any(parte not in mapa_opcoes for parte in partes):
+                responder_usuario(
+                    chat_id,
+                    "Opção inválida. Use 1, 2, 3, 4 ou combinações como 1,3.\n"
+                    "0 — Cancelar."
+                )
+                return
+            categorias_escolhidas = list(dict.fromkeys(mapa_opcoes[p] for p in partes))
+
+        SESSOES_SH.pop(user_id, None)
+        nomes = ", ".join(CATEGORIAS[c]["nome"] for c in categorias_escolhidas)
+        responder_usuario(
+            chat_id,
+            f"✅ Categorias selecionadas: {nomes}.\n"
+            "Iniciando pesquisa; serão publicadas até "
+            f"{MAX_OFERTAS_SH} ofertas no total."
         )
 
         def executar_em_background():
-            sucesso, mensagem_final = executar_sh()
+            sucesso, mensagem_final = executar_sh(categorias_escolhidas)
             responder_usuario(
                 chat_id,
                 ("✅ " if sucesso else "⚠️ ") + mensagem_final
@@ -1348,11 +1398,6 @@ def processar_mensagem_telegram(mensagem):
             target=executar_em_background,
             daemon=True,
         ).start()
-
-        return
-
-    if comando == "/ml":
-        iniciar_cadastro_ml(chat_id, user_id)
         return
 
     sessao = SESSOES_ML.get(user_id)
