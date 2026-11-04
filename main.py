@@ -120,7 +120,7 @@ MARKETPLACES = {
 CATEGORIAS = {
     "utilidades": {
         "nome": "Casa, cozinha e achadinhos",
-        "desconto_minimo": 30,
+        "desconto_minimo": 15,
         "termos": [
             "air fryer",
             "jogo de panelas",
@@ -141,7 +141,7 @@ CATEGORIAS = {
 
     "ferramentas": {
         "nome": "Ferramentas",
-        "desconto_minimo": 30,
+        "desconto_minimo": 15,
         "termos": [
             # Instrumentais odontológicos
             "kit instrumental odontologico",
@@ -190,7 +190,7 @@ CATEGORIAS = {
 
     "eletronicos": {
         "nome": "Eletrônicos e acessórios para celular",
-        "desconto_minimo": 30,
+        "desconto_minimo": 15,
         "termos": [
             "fone bluetooth",
             "smartwatch",
