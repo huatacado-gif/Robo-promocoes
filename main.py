@@ -37,7 +37,7 @@ CANAIS = {
     "eletronicos": os.getenv("CHANNEL_ELETRONICOS", "").strip(),
 }
 
-MAX_OFERTAS_SH = 2
+MAX_OFERTAS_POR_CATEGORIA = 2
 
 FUSO = ZoneInfo("America/Sao_Paulo")
 ARQUIVO_ESTADO = Path("estado_robo.json")
@@ -792,12 +792,14 @@ def executar_sh(categorias_selecionadas=None):
         candidatos = buscar_candidatos(categorias_selecionadas)
 
         total_enviados = 0
+        enviados_por_categoria = {categoria: 0 for categoria in categorias_selecionadas}
 
         for produto in candidatos:
-            if total_enviados >= MAX_OFERTAS_SH:
-                break
-
             categoria = produto["_categoria"]
+
+            # Limite individual: até 2 publicações em cada canal selecionado.
+            if enviados_por_categoria.get(categoria, 0) >= MAX_OFERTAS_POR_CATEGORIA:
+                continue
             chave = str(produto["_chave"])
             titulo = produto.get("titulo", "")
             titulo_normalizado = normalizar_titulo(titulo)
@@ -837,6 +839,7 @@ def executar_sh(categorias_selecionadas=None):
                     titulos_publicados.add(titulo_normalizado)
 
                 total_enviados += 1
+                enviados_por_categoria[categoria] = enviados_por_categoria.get(categoria, 0) + 1
                 time.sleep(2)
 
             else:
@@ -846,9 +849,14 @@ def executar_sh(categorias_selecionadas=None):
                 )
 
         nomes_categorias = ", ".join(CATEGORIAS[c]["nome"] for c in categorias_selecionadas)
+        resumo_categorias = " | ".join(
+            f"{CATEGORIAS[c]["nome"]}: {enviados_por_categoria.get(c, 0)}"
+            for c in categorias_selecionadas
+        )
         mensagem = (
-            f"Busca concluída ({nomes_categorias}). Ofertas publicadas: "
-            f"{total_enviados}/{MAX_OFERTAS_SH}."
+            f"Busca concluída ({nomes_categorias}). Total: {total_enviados}. "
+            f"Por canal — {resumo_categorias}. Limite: "
+            f"{MAX_OFERTAS_POR_CATEGORIA} por categoria."
         )
 
         logging.info(mensagem)
@@ -1394,7 +1402,7 @@ def processar_mensagem_telegram(mensagem):
             chat_id,
             f"✅ Categorias selecionadas: {nomes}.\n"
             "Iniciando pesquisa; serão publicadas até "
-            f"{MAX_OFERTAS_SH} ofertas no total."
+            f"até {MAX_OFERTAS_POR_CATEGORIA} ofertas por categoria (máximo 6 no total)."
         )
 
         def executar_em_background():
