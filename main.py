@@ -85,8 +85,9 @@ MARKETPLACES = {
             "amazon.com.br",
             "amazon.com",
             "amzn.to",
-            # Encurtador oficial da Amazon.
+            # Encurtadores e links de afiliado da Amazon.
             "a.co",
+            "link.amazon",
         ),
     },
     "4": {
