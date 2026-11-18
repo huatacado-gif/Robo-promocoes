@@ -74,6 +74,8 @@ MARKETPLACES = {
         "dominios": (
             "magazineluiza.com.br",
             "magalu.com.br",
+            # Link oficial de redirecionamento usado pelo app/afiliados Magalu.
+            "magazineluiza.onelink.me",
         ),
     },
     "3": {
@@ -83,6 +85,8 @@ MARKETPLACES = {
             "amazon.com.br",
             "amazon.com",
             "amzn.to",
+            # Encurtador oficial da Amazon.
+            "a.co",
         ),
     },
     "4": {
@@ -850,7 +854,7 @@ def executar_sh(categorias_selecionadas=None):
 
         nomes_categorias = ", ".join(CATEGORIAS[c]["nome"] for c in categorias_selecionadas)
         resumo_categorias = " | ".join(
-            f"{CATEGORIAS[c]["nome"]}: {enviados_por_categoria.get(c, 0)}"
+            f'{CATEGORIAS[c]["nome"]}: {enviados_por_categoria.get(c, 0)}'
             for c in categorias_selecionadas
         )
         mensagem = (
